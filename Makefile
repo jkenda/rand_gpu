@@ -1,12 +1,12 @@
 CC= gcc
-CFLAGS= -g
+CFLAGS= -O3
 
-test: test.o server.o
+test: server.o src/test.c
 	mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/test test.o server.o -lOpenCL
+	$(CC) $(CFLAGS) -o bin/test src/test.c server.o -lOpenCL
 
-test.o: src/test.c
-	$(CC) $(CFLAGS) -c src/test.c
+pi: server.o src/pi.c
+	$(CC) $(CFLAGS) -o bin/pi src/pi.c server.o -lOpenCL
 
 server.o: src/server.c
 	$(CC) $(CFLAGS) -c src/server.c

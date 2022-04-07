@@ -5,28 +5,38 @@ int main()
 {
     rand_init();
 
-    for (int i = 0; i < 100; i++) {
-        printf("%u ", rand_get_u16());
+    puts("u16:");
+    for (int i = 0; i < 100000; i++) {
+        uint16_t n = rand_get_u16();
+        printf("%u ", n);
     }
     printf("\n");
 
-    for (int i = 0; i < 100; i++) {
-        printf("%u ", rand_get_u32());
+    puts("u32:");
+    for (int i = 0; i < 100000; i++) {
+        uint32_t n = rand_get_u32();
+        printf("%u ", n);
     }
     printf("\n");
 
-    for (int i = 0; i < 100; i++) {
-        printf("%ld ", rand_get_i64());
+    puts("i64:");
+    for (int i = 0; i < 100000; i++) {
+        int64_t n = rand_get_i64();
+        printf("%ld ", n);
     }
     printf("\n");
 
-    for (int i = 0; i < 100; i++) {
-        printf("%f ", rand_get_float());
+    puts("float:");
+    for (int i = 0; i < 100000; i++) {
+        float n = rand_get_float();
+        printf("%f ", n);
     }
     printf("\n");
 
-    for (int i = 0; i < 100; i++) {
-        printf("%lf ", rand_get_double());
+    puts("double:");
+    for (int i = 0; i < 100000; i++) {
+        float n = rand_get_float();
+        printf("%lf ", n);
     }
     printf("\n");
 
