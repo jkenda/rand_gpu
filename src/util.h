@@ -38,6 +38,5 @@ gpu_info_t gpu_info(cl_device_id device)
     status += clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(info.compute_units), &info.max_dimensions, NULL);
     status += clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(info.compute_units), info.max_work_item_sizes, NULL);
     status += clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(info.max_work_group_sizes), &info.max_work_group_sizes, NULL);
-    printf("status: %d\n", status);
     return info;
 }

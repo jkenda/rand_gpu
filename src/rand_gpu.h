@@ -14,17 +14,18 @@
 #include <stdint.h>
 
 /**
- * @brief Initialize connection to GPU,
- * 		  fill host and device buffers
+ * @brief Initialize the library -
+ * 		  this function has to be called before any random numbers can be retrieved
  * 
- * @return Number of GPU threads (-1 if failed)
+ * @return Sum of all statuses
  */
 int rand_init();
 
 /**
- * @brief Cleans up, joins threads
+ * @brief Uninitialize the library -
+ *        this function is to be called after all other rand_gpu functions
  * 
- * @return Status (0 is OK)
+ * @return Sum of all return statuses 
  */
 int rand_clean();
 
