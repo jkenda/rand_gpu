@@ -98,7 +98,7 @@ int __gpu_init()
 	fseek(fp, 0, SEEK_SET);
 
 	char *src = malloc(fsize+1);
-	fread(src, fsize, 1, fp);
+	status += fread(src, fsize, 1, fp);
 	src[fsize] = '\0';
 	fclose(fp);
 
@@ -142,50 +142,51 @@ int __gpu_init()
 int rand_init()
 {
 	// initialize GPU
-	int ret = __gpu_init();
+	int ret;
+	int status = __gpu_init();
 	
 	// generate seeds
 	cl_ulong seed[BUFFER_SIZE];
-	getrandom(seed, sizeof(seed), 0);
+	status += getrandom(seed, sizeof(seed), 0);
 	cl_mem seed_buffer = clCreateBuffer(__cl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 
-		sizeof(seed), seed, &ret);
+		sizeof(seed), seed, &ret); status += ret;
 
 	// initialize RNG
-	clSetKernelArg(__cl_k_init, 0, sizeof(cl_mem), &__cl_state_buf);
-	clSetKernelArg(__cl_k_init, 1, sizeof(cl_mem), &seed_buffer);
-	clSetKernelArg(__cl_k_generate, 0, sizeof(cl_mem), &__cl_state_buf);
-	clSetKernelArg(__cl_k_generate, 1, sizeof(cl_mem), &__cl_random_buf);
-	clEnqueueNDRangeKernel(__cl_queue, __cl_k_init, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
+	status += clSetKernelArg(__cl_k_init, 0, sizeof(cl_mem), &__cl_state_buf);
+	status += clSetKernelArg(__cl_k_init, 1, sizeof(cl_mem), &seed_buffer);
+	status += clSetKernelArg(__cl_k_generate, 0, sizeof(cl_mem), &__cl_state_buf);
+	status += clSetKernelArg(__cl_k_generate, 1, sizeof(cl_mem), &__cl_random_buf);
+	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_init, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
 
 	// fill both buffers
 
-	clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
-	clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, sizeof(buffer[0]), buffer[0], 0, NULL, NULL);
+	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
+	status += clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, sizeof(buffer[0]), buffer[0], 0, NULL, NULL);
 
-	clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
-	clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, sizeof(buffer[1]), buffer[1], 0, NULL, NULL);
+	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
+	status += clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, sizeof(buffer[1]), buffer[1], 0, NULL, NULL);
 
-	clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
+	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
 
 	// result: local buffers and GPU buffer are all filled
-	clReleaseMemObject(seed_buffer);
+	status += clReleaseMemObject(seed_buffer);
 
-	return ret;
+	return status;
 }
 
 int rand_clean()
 {
-	pthread_cancel(thread_id);
-
-    clFlush(__cl_queue);
-	clFinish(__cl_queue);
-	clReleaseMemObject(__cl_random_buf);
-	clReleaseMemObject(__cl_state_buf);
-	clReleaseKernel(__cl_k_init);
-	clReleaseKernel(__cl_k_generate);
-	clReleaseCommandQueue(__cl_queue);
-	clReleaseProgram(__cl_program);
-	clReleaseContext(__cl_context);
+	int status = pthread_cancel(thread_id);
+    status += clFlush(__cl_queue);
+	status += clFinish(__cl_queue);
+	status += clReleaseMemObject(__cl_random_buf);
+	status += clReleaseMemObject(__cl_state_buf);
+	status += clReleaseKernel(__cl_k_init);
+	status += clReleaseKernel(__cl_k_generate);
+	status += clReleaseCommandQueue(__cl_queue);
+	status += clReleaseProgram(__cl_program);
+	status += clReleaseContext(__cl_context);
+	return status;
 }
 
 cl_ulong _rand_gpu()
