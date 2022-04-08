@@ -1,5 +1,5 @@
 CC= gcc
-CFLAGS= -O3
+CFLAGS= -Wall -Wpedantic -O3
 
 test: server.o src/test.c
 	mkdir -p bin

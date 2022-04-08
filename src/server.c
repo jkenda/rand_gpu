@@ -76,13 +76,14 @@ void *__handle_gpu(void *arg)
 		pthread_mutex_lock(&buffer_lock[fetch_buffer]);
 		//printf("\nfetching %u\n", fetch_buffer); fflush(stdout);
 
-		clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_FALSE, 0, sizeof(buffer[1]), buffer[1], 0, NULL, NULL);
+		clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_FALSE, 0, sizeof(buffer[0]), buffer[fetch_buffer], 0, NULL, NULL);
 
 		fetch = false;
 		pthread_mutex_unlock(&buffer_lock[fetch_buffer]);
 		pthread_mutex_unlock(&fetch_lock);
 		clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
 	}
+	return NULL;
 }
 
 int __gpu_init()
@@ -174,8 +175,7 @@ int rand_init()
 
 int rand_clean()
 {
-	finished = true;
-	pthread_kill(thread_id, 0);
+	pthread_cancel(thread_id);
 
     clFlush(__cl_queue);
 	clFinish(__cl_queue);
@@ -183,8 +183,8 @@ int rand_clean()
 	clReleaseMemObject(__cl_state_buf);
 	clReleaseKernel(__cl_k_init);
 	clReleaseKernel(__cl_k_generate);
-	clReleaseProgram(__cl_program);
 	clReleaseCommandQueue(__cl_queue);
+	clReleaseProgram(__cl_program);
 	clReleaseContext(__cl_context);
 }
 

@@ -4,6 +4,19 @@
 int main()
 {
     rand_init();
+    puts("float:");
+    for (int i = 0; i < 100000; i++) {
+        float n = rand_get_float();
+        printf("%f ", n);
+    }
+    printf("\n");
+
+    puts("double:");
+    for (int i = 0; i < 100000; i++) {
+        double n = rand_get_double();
+        printf("%lf ", n);
+    }
+    printf("\n");
 
     puts("u16:");
     for (int i = 0; i < 100000; i++) {
@@ -23,20 +36,6 @@ int main()
     for (int i = 0; i < 100000; i++) {
         int64_t n = rand_get_i64();
         printf("%ld ", n);
-    }
-    printf("\n");
-
-    puts("float:");
-    for (int i = 0; i < 100000; i++) {
-        float n = rand_get_float();
-        printf("%f ", n);
-    }
-    printf("\n");
-
-    puts("double:");
-    for (int i = 0; i < 100000; i++) {
-        float n = rand_get_float();
-        printf("%lf ", n);
     }
     printf("\n");
 
