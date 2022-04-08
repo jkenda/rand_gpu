@@ -37,13 +37,11 @@ typedef union{
 #define PLATFORM 0
 #define DEVICE 0
 
-#define BUFFER_SIZE (1024*4)
-
-static const size_t WORK_SIZE = BUFFER_SIZE;
-static const size_t WG_SIZE = 256;
-
 #define TYCHE_I_FLOAT_MULTI  5.4210108624275221700372640e-20f
 #define TYCHE_I_DOUBLE_MULTI 5.4210108624275221700372640e-20
+
+size_t WG_SIZE;
+size_t BUFFER_SIZE;
 
 cl_context __cl_context;
 cl_command_queue __cl_queue;
@@ -53,7 +51,7 @@ cl_kernel __cl_k_generate;
 cl_mem __cl_random_buf;
 cl_mem __cl_state_buf;
 
-uint64_t buffer[2][BUFFER_SIZE];
+cl_ulong *buffer[2];
 pthread_mutex_t buffer_lock[2] = { PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER };
 
 uint32_t active_buffer = 0;
@@ -76,12 +74,12 @@ void *__handle_gpu(void *arg)
 		pthread_mutex_lock(&buffer_lock[fetch_buffer]);
 		//printf("\nfetching %u\n", fetch_buffer); fflush(stdout);
 
-		clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_FALSE, 0, sizeof(buffer[0]), buffer[fetch_buffer], 0, NULL, NULL);
+		clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, BUFFER_SIZE * sizeof(cl_ulong), buffer[fetch_buffer], 0, NULL, NULL);
 
 		fetch = false;
 		pthread_mutex_unlock(&buffer_lock[fetch_buffer]);
 		pthread_mutex_unlock(&fetch_lock);
-		clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
+		clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
 	}
 	return NULL;
 }
@@ -112,6 +110,22 @@ int __gpu_init()
 	cl_uint			num_devices;
     status += clGetDeviceIDs(platform_id[PLATFORM], CL_DEVICE_TYPE_GPU, MAX_DEVICES, device_id, &num_devices);
 
+	// get GPU info
+	gpu_info_t info = gpu_info(device_id[DEVICE]);
+	printf("max cu: %u\n", info.compute_units);
+	printf("max dim: %u\n", info.max_dimensions);
+	printf("max item sizes: (%lu, %lu, %lu)\n", 
+		info.max_work_item_sizes[0], info.max_work_item_sizes[1], info.max_work_item_sizes[2]);
+	printf("max work group size: %lu\n", info.max_work_group_sizes);
+
+	WG_SIZE = info.max_work_group_sizes;
+	BUFFER_SIZE = info.max_work_group_sizes * info.compute_units;
+
+	printf("buffer size: %lu\n", BUFFER_SIZE);
+
+	buffer[0] = malloc(BUFFER_SIZE * sizeof(cl_ulong));
+	buffer[1] = malloc(BUFFER_SIZE * sizeof(cl_ulong));
+
 	// crate context, command queue, program
    	__cl_context = clCreateContext(NULL, num_devices, device_id, NULL, NULL, &ret); status += ret;
    	__cl_queue   = clCreateCommandQueue(__cl_context, device_id[DEVICE], 0, &ret); status += ret;
@@ -121,7 +135,7 @@ int __gpu_init()
     // build program
     ret = clBuildProgram(__cl_program, num_devices, device_id, COMPILE_OPTS, NULL, NULL); status += ret;
 	if (ret != 0) {
-		print_cl_err(__cl_program, device_id[0]);
+		print_cl_err(__cl_program, device_id[DEVICE]);
 		exit(status);
 	}
 
@@ -146,30 +160,30 @@ int rand_init()
 	int status = __gpu_init();
 	
 	// generate seeds
-	cl_ulong seed[BUFFER_SIZE];
+	cl_ulong *seed = malloc(BUFFER_SIZE * sizeof(cl_ulong));
 	status += getrandom(seed, sizeof(seed), 0);
 	cl_mem seed_buffer = clCreateBuffer(__cl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 
-		sizeof(seed), seed, &ret); status += ret;
+		 BUFFER_SIZE * sizeof(cl_ulong), seed, &ret); status += ret;
+	free(seed);
 
 	// initialize RNG
 	status += clSetKernelArg(__cl_k_init, 0, sizeof(cl_mem), &__cl_state_buf);
 	status += clSetKernelArg(__cl_k_init, 1, sizeof(cl_mem), &seed_buffer);
 	status += clSetKernelArg(__cl_k_generate, 0, sizeof(cl_mem), &__cl_state_buf);
 	status += clSetKernelArg(__cl_k_generate, 1, sizeof(cl_mem), &__cl_random_buf);
-	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_init, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
+	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_init, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
+	status += clFinish(__cl_queue);
+	status += clReleaseMemObject(seed_buffer);
 
 	// fill both buffers
 
-	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
-	status += clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, sizeof(buffer[0]), buffer[0], 0, NULL, NULL);
+	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
+	status += clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, BUFFER_SIZE * sizeof(cl_ulong), buffer[0], 0, NULL, NULL);
 
-	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
-	status += clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, sizeof(buffer[1]), buffer[1], 0, NULL, NULL);
+	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
+	status += clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, BUFFER_SIZE * sizeof(cl_ulong), buffer[1], 0, NULL, NULL);
 
-	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &WORK_SIZE, &WG_SIZE, 0, NULL, NULL);
-
-	// result: local buffers and GPU buffer are all filled
-	status += clReleaseMemObject(seed_buffer);
+	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
 
 	return status;
 }
@@ -186,6 +200,8 @@ int rand_clean()
 	status += clReleaseCommandQueue(__cl_queue);
 	status += clReleaseProgram(__cl_program);
 	status += clReleaseContext(__cl_context);
+	free(buffer[0]);
+	free(buffer[1]);
 	return status;
 }
 

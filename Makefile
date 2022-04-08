@@ -8,7 +8,7 @@ test: rand_gpu.o examples/test.c
 pi: rand_gpu.o examples/pi.c
 	$(CC) $(CFLAGS) -o bin/pi examples/pi.c rand_gpu.o -lOpenCL
 
-rand_gpu.o: src/rand_gpu.c
+rand_gpu.o: src/rand_gpu.c src/util.h
 	$(CC) $(CFLAGS) -c src/rand_gpu.c
 
 clean:
