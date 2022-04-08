@@ -1,4 +1,4 @@
-#include "server.h"
+#include "rand_gpu.h"
 #include "util.h"
 
 #include <pthread.h>
@@ -188,7 +188,7 @@ int rand_clean()
 	clReleaseContext(__cl_context);
 }
 
-cl_ulong _rand_get()
+cl_ulong _rand_gpu()
 {
 	pthread_mutex_lock(&buffer_lock[active_buffer]);
 	cl_ulong num = buffer[active_buffer][buffer_i++];
@@ -209,31 +209,31 @@ cl_ulong _rand_get()
 	return num;
 }
 
-uint64_t rand_get_u64() { return _rand_get(); }
+uint64_t rand_gpu_u64() { return _rand_gpu(); }
 
-int64_t rand_get_i64() { return (int64_t) _rand_get(); }
+int64_t rand_gpu_i64() { return (int64_t) _rand_gpu(); }
 
-uint32_t rand_get_u32() { return (uint32_t) _rand_get(); }
+uint32_t rand_gpu_u32() { return (uint32_t) _rand_gpu(); }
 
-int32_t rand_get_i32() { return (int32_t) _rand_get(); }
+int32_t rand_gpu_i32() { return (int32_t) _rand_gpu(); }
 
-uint16_t rand_get_u16() { return (uint16_t) _rand_get(); }
+uint16_t rand_gpu_u16() { return (uint16_t) _rand_gpu(); }
 
-int16_t rand_get_i16() { return (int16_t) _rand_get(); }
+int16_t rand_gpu_i16() { return (int16_t) _rand_gpu(); }
 
 
-long rand_get_long() { return rand_get_i64(); }
+long rand_gpu_long() { return rand_gpu_i64(); }
 
-unsigned long rand_get_unsigned_long() { return rand_get_u64(); }
+unsigned long rand_gpu_unsigned_long() { return rand_gpu_u64(); }
 
-int rand_get_int() { return rand_get_i32(); }
+int rand_gpu_int() { return rand_gpu_i32(); }
 
-unsigned int rand_get_uint() { return rand_get_u32(); }
+unsigned int rand_gpu_uint() { return rand_gpu_u32(); }
 
-short rand_get_short() { return rand_get_i16(); }
+short rand_gpu_short() { return rand_gpu_i16(); }
 
-unsigned short rand_get_ushort() { return rand_get_u16(); }
+unsigned short rand_gpu_ushort() { return rand_gpu_u16(); }
 
-float rand_get_float() { return TYCHE_I_FLOAT_MULTI * _rand_get(); }
+float rand_gpu_float() { return TYCHE_I_FLOAT_MULTI * _rand_gpu(); }
 
-double rand_get_double() { return TYCHE_I_DOUBLE_MULTI * _rand_get(); }
+double rand_gpu_double() { return TYCHE_I_DOUBLE_MULTI * _rand_gpu(); }

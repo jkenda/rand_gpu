@@ -28,18 +28,18 @@ int rand_init();
  */
 int rand_clean();
 
-uint64_t rand_get_u64();
-int64_t rand_get_i64();
-uint32_t rand_get_u32();
-int32_t rand_get_i32();
-uint16_t rand_get_u16();
-int16_t rand_get_i16();
+uint64_t rand_gpu_u64();
+int64_t rand_gpu_i64();
+uint32_t rand_gpu_u32();
+int32_t rand_gpu_i32();
+uint16_t rand_gpu_u16();
+int16_t rand_gpu_i16();
 
-long rand_get_long();
-unsigned long rand_get_unsigned_long();
-int rand_get_int();
-unsigned int rand_get_unsigned_int();
-short rand_get_short();
-unsigned short rand_get_ushort();
-float rand_get_float();
-double rand_get_double();
+long rand_gpu_long();
+unsigned long rand_gpu_unsigned_long();
+int rand_gpu_int();
+unsigned int rand_gpu_unsigned_int();
+short rand_gpu_short();
+unsigned short rand_gpu_ushort();
+float rand_gpu_float();
+double rand_gpu_double();
