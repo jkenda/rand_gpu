@@ -1,21 +1,12 @@
 #include "rand_gpu.h"
 #include "util.h"
 
-#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/random.h>
 #include <assert.h>
-
-typedef union{
-	struct{
-		uint a,b,c,d;
-	};
-	ulong res;
-} tyche_i_state;
-
 
 #define CL_TARGET_OPENCL_VERSION 210
 #if defined(__APPLE__) || defined(__MACOSX)
@@ -32,32 +23,38 @@ typedef union{
 #define KERNEL_PATH "kernels/server.cl"
 #endif
 
-#define COMPILE_OPTS "-I " GENERATOR_LOCATION
-
 #define MAX_PLATFORMS 10
 #define MAX_DEVICES 10
 #define PLATFORM 0
 #define DEVICE 0
 
-#define TYCHE_I_FLOAT_MULTI  5.4210108624275221700372640e-20f
-#define TYCHE_I_DOUBLE_MULTI 5.4210108624275221700372640e-20
+#define TYCHE_I_FLOAT_MULTI_32  (1.0f / UINT32_MAX)
+#define TYCHE_I_FLOAT_MULTI_64  (1.0f / UINT64_MAX)
+#define TYCHE_I_DOUBLE_MULTI_64 (1.0  / UINT64_MAX)
 
-size_t WG_SIZE = -1;
-size_t BUFFER_SIZE = -1;
+#define TYCHE_I_STATE_SIZE (4 * sizeof(cl_uint))
 
-cl_context __cl_context;
-cl_command_queue __cl_queue;
-cl_program __cl_program;
-cl_kernel __cl_k_init;
-cl_kernel __cl_k_generate;
-cl_mem __cl_random_buf;
-cl_mem __cl_state_buf;
+size_t _workgroup_size = -1;
+size_t _buffer_size = -1;
 
-cl_ulong *buffer[2];
-uint_fast32_t active_buffer = 0;
-uint_fast32_t buffer_i = 0;
+cl_context       _cl_context;
+cl_command_queue _cl_queue;
+cl_program       _cl_program;
+cl_kernel        _cl_k_init;
+cl_kernel        _cl_k_generate;
+cl_mem           _cl_state_buf;
+cl_mem           _cl_random_buf;
 
-int __gpu_init()
+cl_uint *_buffer32[2];
+cl_ulong *_buffer64[2];
+uint_fast32_t _active_buffer = 0;
+uint_fast32_t _buffer_i = 0;
+
+/*
+	PRIVATE
+*/
+
+int __gpu_init(uint32_t which)
 {
 	cl_int ret;
 	cl_int status = 0;
@@ -90,143 +87,181 @@ int __gpu_init()
 	// get GPU info
 	gpu_info_t info = gpu_info(device_id[DEVICE]);
 
-	WG_SIZE = info.max_work_group_sizes;
-	BUFFER_SIZE = info.max_work_group_sizes * info.compute_units;
+	_workgroup_size = info.max_work_group_sizes;
+	_buffer_size = info.max_work_group_sizes * info.compute_units;
 
-	buffer[0] = malloc(BUFFER_SIZE * sizeof(cl_ulong));
-	buffer[1] = malloc(BUFFER_SIZE * sizeof(cl_ulong));
+	if (which == 64) {
+		_buffer64[0] = malloc(_buffer_size * sizeof(cl_ulong));
+		_buffer64[1] = malloc(_buffer_size * sizeof(cl_ulong));
+	}
+	else {
+		_buffer32[0] = malloc(_buffer_size * sizeof(cl_uint));
+		_buffer32[1] = malloc(_buffer_size * sizeof(cl_uint));
+	}
 
 	// crate context, command queue, program
-   	__cl_context = clCreateContext(NULL, num_devices, device_id, NULL, NULL, &ret); status += ret;
-   	__cl_queue   = clCreateCommandQueue(__cl_context, device_id[DEVICE], 0, &ret); status += ret;
-    __cl_program = clCreateProgramWithSource(__cl_context, 1, (const char **) &src, NULL, &ret); status += ret;
+   	_cl_context = clCreateContext(NULL, num_devices, device_id, NULL, NULL, &ret);
+   	_cl_queue   = clCreateCommandQueue(_cl_context, device_id[DEVICE], 0, &ret);
+    _cl_program = clCreateProgramWithSource(_cl_context, 1, (const char **) &src, NULL, &ret);
 	free(src);
 
     // build program
-    ret = clBuildProgram(__cl_program, num_devices, device_id, COMPILE_OPTS, NULL, NULL); status += ret;
+    ret = clBuildProgram(_cl_program, num_devices, device_id, 0, NULL, NULL);
 	if (ret != 0) {
-		print_cl_err(__cl_program, device_id[DEVICE]);
+		print_cl_err(_cl_program, device_id[DEVICE]);
 		exit(status);
 	}
 
     // create kernels
-    __cl_k_init     = clCreateKernel(__cl_program, "init", &ret); status += ret;
-    __cl_k_generate = clCreateKernel(__cl_program, "generate", &ret); status += ret;
-
-	// create buffer
-	__cl_random_buf = clCreateBuffer(__cl_context, CL_MEM_WRITE_ONLY, BUFFER_SIZE * sizeof(cl_ulong), NULL, &ret);
-	__cl_state_buf  = clCreateBuffer(__cl_context, CL_MEM_READ_WRITE, BUFFER_SIZE * sizeof(tyche_i_state), NULL, &ret);
-
-	return status;
-}
-
-// TODO: rand_init_32 (transfer 32 bit numbers instead of 64 bit ones)
-
-int rand_gpu_init()
-{
-	// initialize GPU
-	int ret;
-	int status = __gpu_init();
+    _cl_k_init     = clCreateKernel(_cl_program, "init", &ret);
+	_cl_k_generate = clCreateKernel(_cl_program, (which == 64) ? "generate64" : "generate32", &ret);
 
 	// generate seeds
-	cl_ulong *seed = malloc(BUFFER_SIZE * sizeof(cl_ulong));
+	cl_ulong seed[_buffer_size];
 	status += getrandom(seed, sizeof(seed), 0);
-	cl_mem seed_buffer = clCreateBuffer(__cl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 
-		 BUFFER_SIZE * sizeof(cl_ulong), seed, &ret); status += ret;
-	free(seed);
+	cl_mem seed_buffer = clCreateBuffer(_cl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 
+			_buffer_size * sizeof(cl_ulong), seed, &ret); status += ret;
 
 	// initialize RNG
-	status += clSetKernelArg(__cl_k_init, 0, sizeof(cl_mem), &__cl_state_buf);
-	status += clSetKernelArg(__cl_k_init, 1, sizeof(cl_mem), &seed_buffer);
-	status += clSetKernelArg(__cl_k_generate, 0, sizeof(cl_mem), &__cl_state_buf);
-	status += clSetKernelArg(__cl_k_generate, 1, sizeof(cl_mem), &__cl_random_buf);
-	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_init, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
-	status += clFinish(__cl_queue);
-	status += clReleaseMemObject(seed_buffer);
+	clSetKernelArg(_cl_k_init, 0, sizeof(cl_mem), &_cl_state_buf);
+	clSetKernelArg(_cl_k_init, 1, sizeof(cl_mem), &seed_buffer);
+	clSetKernelArg(_cl_k_generate, 0, sizeof(cl_mem), &_cl_state_buf);
+	clSetKernelArg(_cl_k_generate, 1, sizeof(cl_mem), &_cl_random_buf);
+	clEnqueueNDRangeKernel(_cl_queue, _cl_k_init, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+	clFinish(_cl_queue);
+	clReleaseMemObject(seed_buffer);
+
+	// create buffers
+	_cl_state_buf  = clCreateBuffer(_cl_context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _buffer_size * TYCHE_I_STATE_SIZE, NULL, &ret);
+	if (which == 64)
+		_cl_random_buf = clCreateBuffer(_cl_context, CL_MEM_WRITE_ONLY, _buffer_size * sizeof(cl_ulong), NULL, &ret);
+	else
+		_cl_random_buf = clCreateBuffer(_cl_context, CL_MEM_WRITE_ONLY, _buffer_size * sizeof(cl_uint), NULL, &ret);
 
 	// fill both buffers
+	clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+	if (which == 64)
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[0], 0, NULL, NULL);
+	else
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[0], 0, NULL, NULL);
+	clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+	if (which == 64)
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[1], 0, NULL, NULL);
+	else
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[1], 0, NULL, NULL);
 
-	active_buffer = 1;
-	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
-	status += clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, BUFFER_SIZE * sizeof(cl_ulong), buffer[0], 0, NULL, NULL);
-
-	active_buffer = 0;
-	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
-	status += clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_TRUE, 0, BUFFER_SIZE * sizeof(cl_ulong), buffer[1], 0, NULL, NULL);
-
-	status += clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
+	// generate future numbers
+	clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
 
 	return status;
 }
 
-int rand_gpu_clean()
+cl_uint __rand_gpu32()
 {
-	int status = 0;
-    status += clFlush(__cl_queue);
-	status += clFinish(__cl_queue);
-	status += clReleaseMemObject(__cl_random_buf);
-	status += clReleaseMemObject(__cl_state_buf);
-	status += clReleaseKernel(__cl_k_init);
-	status += clReleaseKernel(__cl_k_generate);
-	status += clReleaseCommandQueue(__cl_queue);
-	status += clReleaseProgram(__cl_program);
-	status += clReleaseContext(__cl_context);
-	free(buffer[0]);
-	free(buffer[1]);
-	return status;
-}
-
-size_t rand_gpu_bufsiz() { return BUFFER_SIZE; }
-
-/**
- * @brief Retrieves next random number,
- *        switches buffers if necessary
- * 
- * @return cl_ulong 
- */
-cl_ulong __rand_gpu()
-{
-	cl_ulong num = buffer[active_buffer][buffer_i++];
+	cl_uint num = _buffer32[_active_buffer][_buffer_i++];
 
 	// out of numbers in current buffer
-	if (buffer_i == BUFFER_SIZE) {
-		// switch active buffer
-		active_buffer = 1^active_buffer;
-		buffer_i = 0;
+	if (_buffer_i == _buffer_size) {
+		// read data into the empty buffer, generate future numbers
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_FALSE, 0, 
+			_buffer_size * sizeof(cl_uint), _buffer32[_active_buffer], 0, NULL, NULL);
+		clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
 
-		// read data into inactive buffer, generate future numbers
-		clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_FALSE, 0, 
-			BUFFER_SIZE * sizeof(cl_ulong), buffer[1^active_buffer], 0, NULL, NULL);
-		clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
+		// switch active buffer
+		_active_buffer = 1^_active_buffer;
+		_buffer_i = 0;
 	}
 	return num;
 }
 
-uint64_t rand_gpu_u64() { return __rand_gpu(); }
+cl_ulong __rand_gpu64()
+{
+	cl_ulong num = _buffer64[_active_buffer][_buffer_i++];
 
-int64_t rand_gpu_i64() { return (int64_t) __rand_gpu(); }
+	// out of numbers in current buffer
+	if (_buffer_i == _buffer_size) {
+		// read data into the empty buffer, generate future numbers
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_FALSE, 0, 
+			_buffer_size * sizeof(cl_ulong), _buffer64[_active_buffer], 0, NULL, NULL);
 
-uint32_t rand_gpu_u32() { return (uint32_t) __rand_gpu(); }
+		clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
 
-int32_t rand_gpu_i32() { return (int32_t) __rand_gpu(); }
+		// switch active buffer
+		_active_buffer = 1^_active_buffer;
+		_buffer_i = 0;
+	}
+	return num;
+}
 
-uint16_t rand_gpu_u16() { return (uint16_t) __rand_gpu(); }
+void __clean_common()
+{
+    clFlush(_cl_queue);
+	clFinish(_cl_queue);
+	clReleaseMemObject(_cl_state_buf);
+	clReleaseMemObject(_cl_random_buf);
+	clReleaseKernel(_cl_k_init);
+	clReleaseKernel(_cl_k_generate);
+	clReleaseCommandQueue(_cl_queue);
+	clReleaseProgram(_cl_program);
+	clReleaseContext(_cl_context);
+}
 
-int16_t rand_gpu_i16() { return (int16_t) __rand_gpu(); }
+/*
+	PUBLIC
+*/
+
+int rand_gpu64_init()
+{
+	return __gpu_init(64);
+}
+
+int rand_gpu32_init()
+{
+	return __gpu_init(32);
+}
+
+void rand_gpu64_clean()
+{
+	__clean_common();
+	free(_buffer64[0]);
+	free(_buffer64[1]);
+}
+
+void rand_gpu32_clean()
+{
+	__clean_common();
+	free(_buffer32[0]);
+	free(_buffer32[1]);
+}
+
+size_t rand_gpu_bufsiz() { return _buffer_size; }
+
+int64_t  rand_gpu64_i64() { return __rand_gpu64(); }
+int32_t  rand_gpu64_i32() { return __rand_gpu64(); }
+int16_t  rand_gpu64_i16() { return __rand_gpu64(); }
+uint64_t rand_gpu64_u64() { return __rand_gpu64(); }
+uint32_t rand_gpu64_u32() { return __rand_gpu64(); }
+uint16_t rand_gpu64_u16() { return __rand_gpu64(); }
+
+long  rand_gpu64_long()  { return rand_gpu64_i64(); }
+int   rand_gpu64_int()   { return rand_gpu64_i32(); }
+short rand_gpu64_short() { return rand_gpu64_i16(); }
+unsigned long  rand_gpu64_ulong()  { return rand_gpu64_u64(); }
+unsigned int   rand_gpu64_uint()   { return rand_gpu64_u32(); }
+unsigned short rand_gpu64_ushort() { return rand_gpu64_u16(); }
+
+float  rand_gpu64_float()  { return TYCHE_I_FLOAT_MULTI_64  * __rand_gpu64(); }
+double rand_gpu64_double() { return TYCHE_I_DOUBLE_MULTI_64 * __rand_gpu64(); }
 
 
-long rand_gpu_long() { return rand_gpu_i64(); }
+int32_t  rand_gpu32_i32() { return __rand_gpu32(); }
+int16_t  rand_gpu32_i16() { return __rand_gpu32(); }
+uint32_t rand_gpu32_u32() { return __rand_gpu32(); }
+uint16_t rand_gpu32_u16() { return __rand_gpu32(); }
 
-unsigned long rand_gpu_unsigned_long() { return rand_gpu_u64(); }
+int   rand_gpu32_int()   { return rand_gpu32_i32(); }
+short rand_gpu32_short() { return rand_gpu32_i16(); }
+unsigned int   rand_gpu32_uint()   { return rand_gpu32_u32(); }
+unsigned short rand_gpu32_ushort() { return rand_gpu32_u16(); }
 
-int rand_gpu_int() { return rand_gpu_i32(); }
-
-unsigned int rand_gpu_uint() { return rand_gpu_u32(); }
-
-short rand_gpu_short() { return rand_gpu_i16(); }
-
-unsigned short rand_gpu_ushort() { return rand_gpu_u16(); }
-
-float rand_gpu_float() { return TYCHE_I_FLOAT_MULTI * __rand_gpu(); }
-
-double rand_gpu_double() { return TYCHE_I_DOUBLE_MULTI * __rand_gpu(); }
+float rand_gpu32_float() { return TYCHE_I_FLOAT_MULTI_32 * __rand_gpu32(); }

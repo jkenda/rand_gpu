@@ -14,7 +14,7 @@
 
 int main()
 {
-    rand_gpu_init();
+    rand_gpu64_init();
 
     size_t bufsiz = 2 * rand_gpu_bufsiz();
     int64_t a[bufsiz];
@@ -22,15 +22,15 @@ int main()
     int64_t c[bufsiz];
 
     for (size_t i = 0; i < bufsiz; i++) {
-        a[i] = rand_gpu_i64();
+        a[i] = rand_gpu64_i64();
     }
 
     for (size_t i = 0; i < bufsiz; i++) {
-        b[i] = rand_gpu_i64();
+        b[i] = rand_gpu64_i64();
     }
 
     for (size_t i = 0; i < bufsiz; i++) {
-        c[i] = rand_gpu_i64();
+        c[i] = rand_gpu64_i64();
     }
 
     // test how similar they are
@@ -48,5 +48,5 @@ int main()
     printf("similarity b <=> c: %lu / %lu, %f\n", simbc, bufsiz, (float) simbc / bufsiz);
     printf("similarity a <=> c: %lu / %lu, %f\n", simac, bufsiz, (float) simac / bufsiz);
 
-    rand_gpu_clean();
+    rand_gpu64_clean();
 }
