@@ -176,7 +176,7 @@ int rand_gpu_clean()
 	return status;
 }
 
-size_t __rand_gpu_bufsiz() { return BUFFER_SIZE; }
+size_t rand_gpu_bufsiz() { return BUFFER_SIZE; }
 
 /**
  * @brief Retrieves next random number,

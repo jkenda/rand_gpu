@@ -12,6 +12,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 /**
  * @brief Initialize the library -
@@ -28,6 +29,8 @@ int rand_gpu_init();
  * @return Sum of all return statuses 
  */
 int rand_gpu_clean();
+
+size_t rand_gpu_bufsiz();
 
 uint64_t rand_gpu_u64();
 int64_t rand_gpu_i64();

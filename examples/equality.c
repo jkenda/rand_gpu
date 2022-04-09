@@ -16,7 +16,7 @@ int main()
 {
     rand_gpu_init();
 
-    size_t bufsiz = 2 * __rand_gpu_bufsiz();
+    size_t bufsiz = 2 * rand_gpu_bufsiz();
     int64_t a[bufsiz];
     int64_t b[bufsiz];
     int64_t c[bufsiz];
