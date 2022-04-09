@@ -122,7 +122,7 @@ int __gpu_init()
 
 // TODO: rand_init_32 (transfer 32 bit numbers instead of 64 bit ones)
 
-int rand_init()
+int rand_gpu_init()
 {
 	// initialize GPU
 	int ret;
@@ -159,7 +159,7 @@ int rand_init()
 	return status;
 }
 
-int rand_clean()
+int rand_gpu_clean()
 {
 	int status = 0;
     status += clFlush(__cl_queue);

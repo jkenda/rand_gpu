@@ -14,7 +14,7 @@
 
 int main()
 {
-    rand_init();
+    rand_gpu_init();
 
     size_t bufsiz = 2 * __rand_gpu_bufsiz();
     int64_t a[bufsiz];
@@ -48,5 +48,5 @@ int main()
     printf("similarity b <=> c: %lu / %lu, %f\n", simbc, bufsiz, (float) simbc / bufsiz);
     printf("similarity a <=> c: %lu / %lu, %f\n", simac, bufsiz, (float) simac / bufsiz);
 
-    rand_clean();
+    rand_gpu_clean();
 }

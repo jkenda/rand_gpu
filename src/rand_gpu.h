@@ -19,7 +19,7 @@
  * 
  * @return Sum of all statuses
  */
-int rand_init();
+int rand_gpu_init();
 
 /**
  * @brief Uninitialize the library -
@@ -27,7 +27,7 @@ int rand_init();
  * 
  * @return Sum of all return statuses 
  */
-int rand_clean();
+int rand_gpu_clean();
 
 uint64_t rand_gpu_u64();
 int64_t rand_gpu_i64();

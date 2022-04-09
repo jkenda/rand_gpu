@@ -3,7 +3,7 @@
 
 int main()
 {
-    rand_init();
+    rand_gpu_init();
     puts("float:");
     for (int i = 0; i < 4000; i++) {
         float n = rand_gpu_float();
@@ -39,5 +39,5 @@ int main()
     }
     printf("\n");
 
-    rand_clean();
+    rand_gpu_clean();
 }
