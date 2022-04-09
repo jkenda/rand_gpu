@@ -43,7 +43,7 @@ int main()
         if (a[i] == c[i]) simac++;
     }
 
-    printf("buzsiz: %lu\n", bufsiz);
+    printf("bufsiz: %lu\n", bufsiz);
     printf("similarity a <=> b: %lu / %lu, %f\n", simab, bufsiz, (float) simab / bufsiz);
     printf("similarity b <=> c: %lu / %lu, %f\n", simbc, bufsiz, (float) simbc / bufsiz);
     printf("similarity a <=> c: %lu / %lu, %f\n", simac, bufsiz, (float) simac / bufsiz);
