@@ -1,14 +1,22 @@
 CC= gcc
 #CFLAGS= -Wall -Wpedantic -g
-CFLAGS= -Wall -Wpedantic -O3 -DNDEBUG
+CFLAGS= -Wall -Wpedantic -O2 -s -DNDEBUG
 
-test: rand_gpu.o examples/test.c
+equality: rand_gpu.o examples/equality.c
 	mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/test examples/test.c rand_gpu.o -lOpenCL -lpthread
+	$(CC) $(CFLAGS) -o bin/equality examples/equality.c rand_gpu.o -lOpenCL -lpthread
+
+print: rand_gpu.o examples/print.c
+	mkdir -p bin
+	$(CC) $(CFLAGS) -o bin/print examples/print.c rand_gpu.o -lOpenCL -lpthread
 
 pi: rand_gpu.o examples/pi.c
 	mkdir -p bin
 	$(CC) $(CFLAGS) -o bin/pi examples/pi.c rand_gpu.o -lOpenCL -lpthread
+
+pi_compare: rand_gpu.o examples/pi_compare.c
+	mkdir -p bin
+	$(CC) $(CFLAGS) -o bin/pi_compare examples/pi_compare.c rand_gpu.o -lOpenCL -lpthread
 
 rand_gpu.o: src/rand_gpu.c src/util.h
 	$(CC) $(CFLAGS) -c src/rand_gpu.c

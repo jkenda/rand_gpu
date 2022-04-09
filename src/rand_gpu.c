@@ -26,8 +26,10 @@ typedef union{
 
 #ifdef _WIN32
 #define GENERATOR_LOCATION "RandomCL\\generators\\"
+#define KERNEL_PATH "kernels\\server.cl"
 #else
 #define GENERATOR_LOCATION "RandomCL/generators/"
+#define KERNEL_PATH "kernels/server.cl"
 #endif
 
 #define COMPILE_OPTS "-I " GENERATOR_LOCATION
@@ -40,8 +42,8 @@ typedef union{
 #define TYCHE_I_FLOAT_MULTI  5.4210108624275221700372640e-20f
 #define TYCHE_I_DOUBLE_MULTI 5.4210108624275221700372640e-20
 
-size_t WG_SIZE;
-size_t BUFFER_SIZE;
+size_t WG_SIZE = -1;
+size_t BUFFER_SIZE = -1;
 
 cl_context __cl_context;
 cl_command_queue __cl_queue;
@@ -52,38 +54,17 @@ cl_mem __cl_random_buf;
 cl_mem __cl_state_buf;
 
 cl_ulong *buffer[2];
-cl_event fetched_event;
+uint_fast32_t active_buffer = 0;
+uint_fast32_t buffer_i = 0;
 
-uint32_t active_buffer = 0;
-size_t buffer_i = 0;
-
-pthread_mutex_t buffer_ready_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t  buffer_ready_cond = PTHREAD_COND_INITIALIZER;
-
-/* Set the appropriate "buffer ready" flag and send signal */
-void CL_CALLBACK fetched(cl_event e, cl_int status, void *buffer_ready) {
-	pthread_mutex_lock(&buffer_ready_lock);
-	*(bool *) buffer_ready = true;
-	pthread_cond_signal(&buffer_ready_cond);
-	pthread_mutex_unlock(&buffer_ready_lock);
-}
-
-/**
- * @brief Initialize OpenCL and graphics card:
- * 		  - create command queue, context, program
- *        - build program,
- *        - crate kernels and buffers
- * 
- * @return Sum of return statuses 
- */
 int __gpu_init()
 {
 	cl_int ret;
 	cl_int status = 0;
 
 	// read kernel source file
-	FILE *fp = fopen("kernels/server.cl", "r");
-	assert(fp != NULL);
+	FILE *fp = fopen(KERNEL_PATH, "r");
+	if (fp == NULL) { fprintf(stderr, "Could not find file %s", KERNEL_PATH); exit(1); }
 
 	fseek(fp, 0, SEEK_END);
 	long fsize = ftell(fp);
@@ -98,13 +79,13 @@ int __gpu_init()
 	cl_platform_id	platform_id[MAX_PLATFORMS];
 	cl_uint			num_platforms;
 	status += clGetPlatformIDs(MAX_PLATFORMS, platform_id, &num_platforms);
-	assert(num_platforms > 0);
+	if (num_platforms == 0) { fputs("Could not find any OpenCL platforms.\n", stderr); exit(2); }
 
 	// get devices
     cl_device_id	device_id[MAX_DEVICES];
 	cl_uint			num_devices;
     status += clGetDeviceIDs(platform_id[PLATFORM], CL_DEVICE_TYPE_GPU, MAX_DEVICES, device_id, &num_devices);
-	assert(num_devices > 0);
+	if (num_devices == 0) { fputs("Could not find any GPUs.\n", stderr); exit(3); }
 
 	// get GPU info
 	gpu_info_t info = gpu_info(device_id[DEVICE]);
@@ -113,9 +94,7 @@ int __gpu_init()
 	BUFFER_SIZE = info.max_work_group_sizes * info.compute_units;
 
 	buffer[0] = malloc(BUFFER_SIZE * sizeof(cl_ulong));
-	assert(buffer[0] != NULL);
 	buffer[1] = malloc(BUFFER_SIZE * sizeof(cl_ulong));
-	assert(buffer[1] != NULL);
 
 	// crate context, command queue, program
    	__cl_context = clCreateContext(NULL, num_devices, device_id, NULL, NULL, &ret); status += ret;
@@ -140,6 +119,8 @@ int __gpu_init()
 
 	return status;
 }
+
+// TODO: rand_init_32 (transfer 32 bit numbers instead of 64 bit ones)
 
 int rand_init()
 {
@@ -195,53 +176,43 @@ int rand_clean()
 	return status;
 }
 
+size_t __rand_gpu_bufsiz() { return BUFFER_SIZE; }
+
 /**
  * @brief Retrieves next random number,
  *        switches buffers if necessary
  * 
  * @return cl_ulong 
  */
-cl_ulong _rand_gpu()
+cl_ulong __rand_gpu()
 {
 	cl_ulong num = buffer[active_buffer][buffer_i++];
 
 	// out of numbers in current buffer
 	if (buffer_i == BUFFER_SIZE) {
-		bool buffer_ready = false;
-
 		// switch active buffer
 		active_buffer = 1^active_buffer;
 		buffer_i = 0;
 
-		// read data into inactive buffer
+		// read data into inactive buffer, generate future numbers
 		clEnqueueReadBuffer(__cl_queue, __cl_random_buf, CL_FALSE, 0, 
-			BUFFER_SIZE * sizeof(cl_ulong), buffer[1^active_buffer], 0, NULL, &fetched_event);
+			BUFFER_SIZE * sizeof(cl_ulong), buffer[1^active_buffer], 0, NULL, NULL);
 		clEnqueueNDRangeKernel(__cl_queue, __cl_k_generate, 1, 0, &BUFFER_SIZE, &WG_SIZE, 0, NULL, NULL);
-	
-		// set event callback
-		int status = clSetEventCallback(fetched_event, CL_COMPLETE, &fetched, (void *) &buffer_ready);
-		assert(status >= 0);
-
-		// wait for active buffer to be ready
-		pthread_mutex_lock(&buffer_ready_lock);
-		while (!buffer_ready)
-			pthread_cond_wait(&buffer_ready_cond, &buffer_ready_lock);
-		pthread_mutex_unlock(&buffer_ready_lock);
 	}
 	return num;
 }
 
-uint64_t rand_gpu_u64() { return _rand_gpu(); }
+uint64_t rand_gpu_u64() { return __rand_gpu(); }
 
-int64_t rand_gpu_i64() { return (int64_t) _rand_gpu(); }
+int64_t rand_gpu_i64() { return (int64_t) __rand_gpu(); }
 
-uint32_t rand_gpu_u32() { return (uint32_t) _rand_gpu(); }
+uint32_t rand_gpu_u32() { return (uint32_t) __rand_gpu(); }
 
-int32_t rand_gpu_i32() { return (int32_t) _rand_gpu(); }
+int32_t rand_gpu_i32() { return (int32_t) __rand_gpu(); }
 
-uint16_t rand_gpu_u16() { return (uint16_t) _rand_gpu(); }
+uint16_t rand_gpu_u16() { return (uint16_t) __rand_gpu(); }
 
-int16_t rand_gpu_i16() { return (int16_t) _rand_gpu(); }
+int16_t rand_gpu_i16() { return (int16_t) __rand_gpu(); }
 
 
 long rand_gpu_long() { return rand_gpu_i64(); }
@@ -256,6 +227,6 @@ short rand_gpu_short() { return rand_gpu_i16(); }
 
 unsigned short rand_gpu_ushort() { return rand_gpu_u16(); }
 
-float rand_gpu_float() { return TYCHE_I_FLOAT_MULTI * _rand_gpu(); }
+float rand_gpu_float() { return TYCHE_I_FLOAT_MULTI * __rand_gpu(); }
 
-double rand_gpu_double() { return TYCHE_I_DOUBLE_MULTI * _rand_gpu(); }
+double rand_gpu_double() { return TYCHE_I_DOUBLE_MULTI * __rand_gpu(); }
