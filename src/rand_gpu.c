@@ -52,13 +52,18 @@ buffer64_t;
 size_t _workgroup_size = -1;
 size_t _buffer_size = -1;
 
-cl_context       _cl_context;
-cl_command_queue _cl_queue;
-cl_program       _cl_program;
-cl_kernel        _cl_k_init;
-cl_kernel        _cl_k_generate;
-cl_mem           _cl_state_buf;
-cl_mem           _cl_random_buf;
+struct
+{
+	cl_context       context;
+	cl_command_queue queue;
+	cl_program       program;
+	cl_kernel        k_init;
+	cl_kernel        k_generate;
+	cl_mem           state_buf;
+	cl_mem           random_buf;
+} 
+_cl;
+
 
 buffer32_t _buffer32[2] = {0};
 buffer64_t _buffer64[2] = {0};
@@ -137,68 +142,68 @@ int __gpu_init(uint32_t which, uint32_t multi)
 	}
 
 	// crate context, command queue, program
-   	_cl_context = clCreateContext(NULL, num_devices, device_id, NULL, NULL, &ret);
-   	_cl_queue   = clCreateCommandQueue(_cl_context, device_id[DEVICE], 0, &ret);
-    _cl_program = clCreateProgramWithSource(_cl_context, 1, (const char **) &src, NULL, &ret);
+   	_cl.context = clCreateContext(NULL, num_devices, device_id, NULL, NULL, &ret);
+   	_cl.queue   = clCreateCommandQueue(_cl.context, device_id[DEVICE], 0, &ret);
+    _cl.program = clCreateProgramWithSource(_cl.context, 1, (const char **) &src, NULL, &ret);
 	free(src);
 
     // build program
-    ret = clBuildProgram(_cl_program, num_devices, device_id, 0, NULL, NULL);
+    ret = clBuildProgram(_cl.program, num_devices, device_id, 0, NULL, NULL);
 	if (ret != 0) {
-		print_cl_err(_cl_program, device_id[DEVICE]);
+		print_cl_err(_cl.program, device_id[DEVICE]);
 		exit(status);
 	}
 
     // create kernels
-    _cl_k_init     = clCreateKernel(_cl_program, "init", &ret);
-	_cl_k_generate = clCreateKernel(_cl_program, (which == 64) ? "generate64" : "generate32", &ret);
+    _cl.k_init     = clCreateKernel(_cl.program, "init", &ret);
+	_cl.k_generate = clCreateKernel(_cl.program, (which == 64) ? "generate64" : "generate32", &ret);
 
 	// generate seeds
 	cl_ulong seed[_buffer_size];
 	status = getrandom(seed, sizeof(seed), 0);
 	if (status == -1) { perror("Could not get rangom seeds"); exit(4); }
-	cl_mem seed_buffer = clCreateBuffer(_cl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 
+	cl_mem seed_buffer = clCreateBuffer(_cl.context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 
 			_buffer_size * sizeof(cl_ulong), seed, &ret);
 
 	// initialize RNG
-	clSetKernelArg(_cl_k_init, 0, sizeof(cl_mem), &_cl_state_buf);
-	clSetKernelArg(_cl_k_init, 1, sizeof(cl_mem), &seed_buffer);
-	clSetKernelArg(_cl_k_generate, 0, sizeof(cl_mem), &_cl_state_buf);
-	clSetKernelArg(_cl_k_generate, 1, sizeof(cl_mem), &_cl_random_buf);
-	clEnqueueNDRangeKernel(_cl_queue, _cl_k_init, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
-	clFinish(_cl_queue);
+	clSetKernelArg(_cl.k_init, 0, sizeof(cl_mem), &_cl.state_buf);
+	clSetKernelArg(_cl.k_init, 1, sizeof(cl_mem), &seed_buffer);
+	clSetKernelArg(_cl.k_generate, 0, sizeof(cl_mem), &_cl.state_buf);
+	clSetKernelArg(_cl.k_generate, 1, sizeof(cl_mem), &_cl.random_buf);
+	clEnqueueNDRangeKernel(_cl.queue, _cl.k_init, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+	clFinish(_cl.queue);
 	clReleaseMemObject(seed_buffer);
 
 	// create buffers
-	_cl_state_buf  = clCreateBuffer(_cl_context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _buffer_size * TYCHE_I_STATE_SIZE, NULL, &ret);
+	_cl.state_buf  = clCreateBuffer(_cl.context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _buffer_size * TYCHE_I_STATE_SIZE, NULL, &ret);
 	if (which == 64)
-		_cl_random_buf = clCreateBuffer(_cl_context, CL_MEM_WRITE_ONLY, _buffer_size * sizeof(cl_ulong), NULL, &ret);
+		_cl.random_buf = clCreateBuffer(_cl.context, CL_MEM_WRITE_ONLY, _buffer_size * sizeof(cl_ulong), NULL, &ret);
 	else
-		_cl_random_buf = clCreateBuffer(_cl_context, CL_MEM_WRITE_ONLY, _buffer_size * sizeof(cl_uint), NULL, &ret);
+		_cl.random_buf = clCreateBuffer(_cl.context, CL_MEM_WRITE_ONLY, _buffer_size * sizeof(cl_uint), NULL, &ret);
 
 	// fill both buffers
-	clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+	clEnqueueNDRangeKernel(_cl.queue, _cl.k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
 	if (which == 64) {
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[0].data, 0, NULL, NULL);
+		clEnqueueReadBuffer(_cl.queue, _cl.random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[0].data, 0, NULL, NULL);
 		_buffer64[0].ready = CL_TRUE;
 	}
 	else {
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[0].data, 0, NULL, NULL);
+		clEnqueueReadBuffer(_cl.queue, _cl.random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[0].data, 0, NULL, NULL);
 		_buffer32[0].ready = CL_TRUE;
 	}
 
-	clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+	clEnqueueNDRangeKernel(_cl.queue, _cl.k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
 	if (which == 64) {
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[1].data, 0, NULL, NULL);
+		clEnqueueReadBuffer(_cl.queue, _cl.random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[1].data, 0, NULL, NULL);
 		_buffer64[1].ready = CL_TRUE;
 	}
 	else {
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[1].data, 0, NULL, NULL);
+		clEnqueueReadBuffer(_cl.queue, _cl.random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[1].data, 0, NULL, NULL);
 		_buffer32[1].ready = CL_TRUE;
 	}
 
 	// generate future numbers
-	clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+	clEnqueueNDRangeKernel(_cl.queue, _cl.k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
 
 	return status;
 }
@@ -219,9 +224,9 @@ cl_uint __rand_gpu32()
 	if (_buffer32_i == _buffer_size) {
 		_buffer32[_active_buffer32].ready = CL_FALSE;
 		// enqueue read data into the empty buffer, generate future numbers
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_FALSE, 0, 
+		clEnqueueReadBuffer(_cl.queue, _cl.random_buf, CL_TRUE, 0, 
 			_buffer_size * sizeof(cl_uint), _buffer32[_active_buffer32].data, 0, NULL, &_buffer_ready_event);
-		clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+		clEnqueueNDRangeKernel(_cl.queue, _cl.k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
 		clSetEventCallback(_buffer_ready_event, CL_COMPLETE, &__set_ready_flag, (void *) &_buffer32[_active_buffer32].ready);
 
 		// switch active buffer
@@ -246,9 +251,9 @@ cl_ulong __rand_gpu64()
 	if (_buffer64_i == _buffer_size) {
 		_buffer64[_active_buffer64].ready = CL_FALSE;
 		// enqueue read data into the empty buffer, generate future numbers
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_FALSE, 0, 
+		clEnqueueReadBuffer(_cl.queue, _cl.random_buf, CL_TRUE, 0, 
 			_buffer_size * sizeof(cl_ulong), _buffer64[_active_buffer64].data, 0, NULL, &_buffer_ready_event);
-		clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+		clEnqueueNDRangeKernel(_cl.queue, _cl.k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
 		clSetEventCallback(_buffer_ready_event, CL_COMPLETE, &__set_ready_flag, (void *) &_buffer64[_active_buffer64].ready);
 
 		// switch active buffer
@@ -260,15 +265,15 @@ cl_ulong __rand_gpu64()
 
 void __clean_common()
 {
-    clFlush(_cl_queue);
-	clFinish(_cl_queue);
-	clReleaseMemObject(_cl_state_buf);
-	clReleaseMemObject(_cl_random_buf);
-	clReleaseKernel(_cl_k_init);
-	clReleaseKernel(_cl_k_generate);
-	clReleaseCommandQueue(_cl_queue);
-	clReleaseProgram(_cl_program);
-	clReleaseContext(_cl_context);
+    clFlush(_cl.queue);
+	clFinish(_cl.queue);
+	clReleaseMemObject(_cl.state_buf);
+	clReleaseMemObject(_cl.random_buf);
+	clReleaseKernel(_cl.k_init);
+	clReleaseKernel(_cl.k_generate);
+	clReleaseCommandQueue(_cl.queue);
+	clReleaseProgram(_cl.program);
+	clReleaseContext(_cl.context);
 }
 
 /*
