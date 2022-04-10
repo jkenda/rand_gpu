@@ -14,15 +14,13 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#ifdef RAND_GPU_32
-
 /**
- * @brief Initialize the library -
+ * @brief Initialize the 32-bit version of the library -
  * 		  this function has to be called before any random numbers can be retrieved
  * 
  * @return Sum of all statuses
  */
-int rand_gpu32_init();
+int rand_gpu32_init(uint32_t multi);
 
 /**
  * @brief Uninitialize the library -
@@ -42,15 +40,14 @@ short rand_gpu32_short();
 unsigned short rand_gpu32_ushort();
 float rand_gpu32_float();
 
-#else
 
 /**
- * @brief Initialize the library -
+ * @brief Initialize the 64-bit version of the library -
  * 		  this function has to be called before any random numbers can be retrieved
  * 
  * @return Sum of all statuses
  */
-int rand_gpu64_init();
+int rand_gpu64_init(uint32_t multi);
 
 /**
  * @brief Uninitialize the library -
@@ -75,6 +72,5 @@ unsigned short rand_gpu64_ushort();
 float rand_gpu64_float();
 double rand_gpu64_double();
 
-#endif
 
 size_t rand_gpu_bufsiz();

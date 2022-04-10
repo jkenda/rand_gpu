@@ -5,7 +5,6 @@
 #include <time.h>
 #include <sys/time.h>
 
-#define RAND_GPU_32
 #include "../src/rand_gpu.h"
 
 #define ABS(A) ((A >= 0) ? (A) : -(A))
@@ -19,7 +18,7 @@ int main()
 {
     long cnt = 0;
 
-    rand_gpu32_init();
+    rand_gpu32_init(16);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 

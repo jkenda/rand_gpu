@@ -1,8 +1,8 @@
 #include "rand_gpu.h"
 #include "util.h"
 
+#include <pthread.h>
 #include <signal.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/random.h>
@@ -28,11 +28,26 @@
 #define PLATFORM 0
 #define DEVICE 0
 
-#define TYCHE_I_FLOAT_MULTI_32  (1.0f / UINT32_MAX)
-#define TYCHE_I_FLOAT_MULTI_64  (1.0f / UINT64_MAX)
-#define TYCHE_I_DOUBLE_MULTI_64 (1.0  / UINT64_MAX)
+#define FLOAT_MULTI_32  (1.0f / UINT32_MAX)
+#define FLOAT_MULTI_64  (1.0f / UINT64_MAX)
+#define DOUBLE_MULTI_64 (1.0  / UINT64_MAX)
 
 #define TYCHE_I_STATE_SIZE (4 * sizeof(cl_uint))
+
+typedef struct
+{
+	cl_uint *data;
+	cl_bool ready;
+}
+buffer32_t;
+
+typedef struct
+{
+	cl_ulong *data;
+	cl_bool ready;
+}
+buffer64_t;
+
 
 size_t _workgroup_size = -1;
 size_t _buffer_size = -1;
@@ -45,16 +60,34 @@ cl_kernel        _cl_k_generate;
 cl_mem           _cl_state_buf;
 cl_mem           _cl_random_buf;
 
-cl_uint *_buffer32[2];
-cl_ulong *_buffer64[2];
-uint_fast32_t _active_buffer = 0;
-uint_fast32_t _buffer_i = 0;
+buffer32_t _buffer32[2] = {0};
+buffer64_t _buffer64[2] = {0};
+uint_fast32_t _active_buffer32 = 0;
+uint_fast32_t _active_buffer64 = 0;
+uint_fast32_t _buffer32_i = 0;
+uint_fast32_t _buffer64_i = 0;
+
+cl_event _buffer_ready_event;
+pthread_mutex_t _buffer_ready_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t _buffer_ready_cond;
 
 /*
 	PRIVATE
 */
 
-int __gpu_init(uint32_t which)
+/* 
+FIXME: numbers in the same buffer stay the same
+*/
+
+void CL_CALLBACK __set_ready_flag(cl_event e, cl_int status, void *data)
+{
+	pthread_mutex_lock(&_buffer_ready_lock);
+	*(cl_bool *) data = CL_TRUE;
+	pthread_cond_signal(&_buffer_ready_cond);
+	pthread_mutex_unlock(&_buffer_ready_lock);
+}
+
+int __gpu_init(uint32_t which, uint32_t multi)
 {
 	cl_int ret;
 	cl_int status = 0;
@@ -88,15 +121,19 @@ int __gpu_init(uint32_t which)
 	gpu_info_t info = gpu_info(device_id[DEVICE]);
 
 	_workgroup_size = info.max_work_group_sizes;
-	_buffer_size = info.max_work_group_sizes * info.compute_units;
+	_buffer_size = multi * info.max_work_group_sizes * info.compute_units;
 
 	if (which == 64) {
-		_buffer64[0] = malloc(_buffer_size * sizeof(cl_ulong));
-		_buffer64[1] = malloc(_buffer_size * sizeof(cl_ulong));
+		_buffer64[0].data = malloc(_buffer_size * sizeof(cl_ulong));
+		if (_buffer64[0].data == NULL) { printf("Could not allocate %lu bytes of memory\n", _buffer_size * sizeof(cl_ulong)); exit(5); }
+		_buffer64[1].data = malloc(_buffer_size * sizeof(cl_ulong));
+		if (_buffer64[0].data == NULL) { printf("Could not allocate %lu bytes of memory\n", _buffer_size * sizeof(cl_ulong)); exit(5); }
 	}
 	else {
-		_buffer32[0] = malloc(_buffer_size * sizeof(cl_uint));
-		_buffer32[1] = malloc(_buffer_size * sizeof(cl_uint));
+		_buffer32[0].data = malloc(_buffer_size * sizeof(cl_uint));
+		if (_buffer32[0].data == NULL) { printf("Could not allocate %lu bytes of memory\n", _buffer_size * sizeof(cl_uint)); exit(5); }
+		_buffer32[1].data = malloc(_buffer_size * sizeof(cl_uint));
+		if (_buffer32[0].data == NULL) { printf("Could not allocate %lu bytes of memory\n", _buffer_size * sizeof(cl_uint)); exit(5); }
 	}
 
 	// crate context, command queue, program
@@ -118,9 +155,10 @@ int __gpu_init(uint32_t which)
 
 	// generate seeds
 	cl_ulong seed[_buffer_size];
-	status += getrandom(seed, sizeof(seed), 0);
+	status = getrandom(seed, sizeof(seed), 0);
+	if (status == -1) { perror("Could not get rangom seeds"); exit(4); }
 	cl_mem seed_buffer = clCreateBuffer(_cl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 
-			_buffer_size * sizeof(cl_ulong), seed, &ret); status += ret;
+			_buffer_size * sizeof(cl_ulong), seed, &ret);
 
 	// initialize RNG
 	clSetKernelArg(_cl_k_init, 0, sizeof(cl_mem), &_cl_state_buf);
@@ -140,15 +178,24 @@ int __gpu_init(uint32_t which)
 
 	// fill both buffers
 	clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
-	if (which == 64)
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[0], 0, NULL, NULL);
-	else
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[0], 0, NULL, NULL);
+	if (which == 64) {
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[0].data, 0, NULL, NULL);
+		_buffer64[0].ready = CL_TRUE;
+	}
+	else {
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[0].data, 0, NULL, NULL);
+		_buffer32[0].ready = CL_TRUE;
+	}
+
 	clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
-	if (which == 64)
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[1], 0, NULL, NULL);
-	else
-		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[1], 0, NULL, NULL);
+	if (which == 64) {
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_ulong), _buffer64[1].data, 0, NULL, NULL);
+		_buffer64[1].ready = CL_TRUE;
+	}
+	else {
+		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_TRUE, 0, _buffer_size * sizeof(cl_uint), _buffer32[1].data, 0, NULL, NULL);
+		_buffer32[1].ready = CL_TRUE;
+	}
 
 	// generate future numbers
 	clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
@@ -158,37 +205,55 @@ int __gpu_init(uint32_t which)
 
 cl_uint __rand_gpu32()
 {
-	cl_uint num = _buffer32[_active_buffer][_buffer_i++];
+	if (_buffer32_i == 0) {
+		// check if buffer is ready
+		pthread_mutex_lock(&_buffer_ready_lock);
+		while (!_buffer32[_active_buffer32].ready)
+			pthread_cond_wait(&_buffer_ready_cond, &_buffer_ready_lock);
+		pthread_mutex_unlock(&_buffer_ready_lock);
+	}
+
+	cl_uint num = _buffer32[_active_buffer32].data[_buffer32_i++];
 
 	// out of numbers in current buffer
-	if (_buffer_i == _buffer_size) {
-		// read data into the empty buffer, generate future numbers
+	if (_buffer32_i == _buffer_size) {
+		_buffer32[_active_buffer32].ready = CL_FALSE;
+		// enqueue read data into the empty buffer, generate future numbers
 		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_FALSE, 0, 
-			_buffer_size * sizeof(cl_uint), _buffer32[_active_buffer], 0, NULL, NULL);
+			_buffer_size * sizeof(cl_uint), _buffer32[_active_buffer32].data, 0, NULL, &_buffer_ready_event);
 		clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+		clSetEventCallback(_buffer_ready_event, CL_COMPLETE, &__set_ready_flag, (void *) &_buffer32[_active_buffer32].ready);
 
 		// switch active buffer
-		_active_buffer = 1^_active_buffer;
-		_buffer_i = 0;
+		_active_buffer32 = 1^_active_buffer32;
+		_buffer32_i = 0;
 	}
 	return num;
 }
 
 cl_ulong __rand_gpu64()
 {
-	cl_ulong num = _buffer64[_active_buffer][_buffer_i++];
+	if (_buffer64_i == 0) {
+		pthread_mutex_lock(&_buffer_ready_lock);
+		while (!_buffer64[_active_buffer64].ready)
+			pthread_cond_wait(&_buffer_ready_cond, &_buffer_ready_lock);
+		pthread_mutex_unlock(&_buffer_ready_lock);
+	}
+
+	cl_ulong num = _buffer64[_active_buffer64].data[_buffer64_i++];
 
 	// out of numbers in current buffer
-	if (_buffer_i == _buffer_size) {
-		// read data into the empty buffer, generate future numbers
+	if (_buffer64_i == _buffer_size) {
+		_buffer64[_active_buffer64].ready = CL_FALSE;
+		// enqueue read data into the empty buffer, generate future numbers
 		clEnqueueReadBuffer(_cl_queue, _cl_random_buf, CL_FALSE, 0, 
-			_buffer_size * sizeof(cl_ulong), _buffer64[_active_buffer], 0, NULL, NULL);
-
+			_buffer_size * sizeof(cl_ulong), _buffer64[_active_buffer64].data, 0, NULL, &_buffer_ready_event);
 		clEnqueueNDRangeKernel(_cl_queue, _cl_k_generate, 1, 0, &_buffer_size, &_workgroup_size, 0, NULL, NULL);
+		clSetEventCallback(_buffer_ready_event, CL_COMPLETE, &__set_ready_flag, (void *) &_buffer64[_active_buffer64].ready);
 
 		// switch active buffer
-		_active_buffer = 1^_active_buffer;
-		_buffer_i = 0;
+		_active_buffer64 = 1^_active_buffer64;
+		_buffer64_i = 0;
 	}
 	return num;
 }
@@ -210,31 +275,44 @@ void __clean_common()
 	PUBLIC
 */
 
-int rand_gpu64_init()
+int rand_gpu32_init(uint32_t multi)
 {
-	return __gpu_init(64);
+	return __gpu_init(32, multi);
 }
 
-int rand_gpu32_init()
+int rand_gpu64_init(uint32_t multi)
 {
-	return __gpu_init(32);
+	return __gpu_init(64, multi);
 }
 
 void rand_gpu64_clean()
 {
 	__clean_common();
-	free(_buffer64[0]);
-	free(_buffer64[1]);
+	free(_buffer64[0].data);
+	free(_buffer64[1].data);
 }
 
 void rand_gpu32_clean()
 {
 	__clean_common();
-	free(_buffer32[0]);
-	free(_buffer32[1]);
+	free(_buffer32[0].data);
+	free(_buffer32[1].data);
 }
 
 size_t rand_gpu_bufsiz() { return _buffer_size; }
+
+int32_t  rand_gpu32_i32() { return __rand_gpu32(); }
+int16_t  rand_gpu32_i16() { return __rand_gpu32(); }
+uint32_t rand_gpu32_u32() { return __rand_gpu32(); }
+uint16_t rand_gpu32_u16() { return __rand_gpu32(); }
+
+int   rand_gpu32_int()   { return rand_gpu32_i32(); }
+short rand_gpu32_short() { return rand_gpu32_i16(); }
+unsigned int   rand_gpu32_uint()   { return rand_gpu32_u32(); }
+unsigned short rand_gpu32_ushort() { return rand_gpu32_u16(); }
+
+float rand_gpu32_float() { return FLOAT_MULTI_32 * __rand_gpu32(); }
+
 
 int64_t  rand_gpu64_i64() { return __rand_gpu64(); }
 int32_t  rand_gpu64_i32() { return __rand_gpu64(); }
@@ -250,18 +328,5 @@ unsigned long  rand_gpu64_ulong()  { return rand_gpu64_u64(); }
 unsigned int   rand_gpu64_uint()   { return rand_gpu64_u32(); }
 unsigned short rand_gpu64_ushort() { return rand_gpu64_u16(); }
 
-float  rand_gpu64_float()  { return TYCHE_I_FLOAT_MULTI_64  * __rand_gpu64(); }
-double rand_gpu64_double() { return TYCHE_I_DOUBLE_MULTI_64 * __rand_gpu64(); }
-
-
-int32_t  rand_gpu32_i32() { return __rand_gpu32(); }
-int16_t  rand_gpu32_i16() { return __rand_gpu32(); }
-uint32_t rand_gpu32_u32() { return __rand_gpu32(); }
-uint16_t rand_gpu32_u16() { return __rand_gpu32(); }
-
-int   rand_gpu32_int()   { return rand_gpu32_i32(); }
-short rand_gpu32_short() { return rand_gpu32_i16(); }
-unsigned int   rand_gpu32_uint()   { return rand_gpu32_u32(); }
-unsigned short rand_gpu32_ushort() { return rand_gpu32_u16(); }
-
-float rand_gpu32_float() { return TYCHE_I_FLOAT_MULTI_32 * __rand_gpu32(); }
+float  rand_gpu64_float()  { return FLOAT_MULTI_64  * __rand_gpu64(); }
+double rand_gpu64_double() { return DOUBLE_MULTI_64 * __rand_gpu64(); }

@@ -19,7 +19,7 @@ int main()
 {
     long cnt = 0;
 
-    rand_gpu32_init();
+    rand_gpu32_init(64);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
