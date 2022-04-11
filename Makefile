@@ -1,29 +1,46 @@
 CC= gcc
-#CFLAGS= -Wall -Wpedantic -g
-CFLAGS= -Wall -Wpedantic -O2 -s -DNDEBUG
+CPPC= g++
+CFLAGS= -O3 -s -Wall -Wpedantic
+CPPFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
+INSTALL_PATH=~/.local/lib/
+SO= -Llib -l:rand_gpu.so
 
-equality: rand_gpu.o examples/equality.c
-	-mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/equality examples/equality.c rand_gpu.o -lOpenCL -lpthread
+default: pi_compare
 
-print: rand_gpu.o examples/print.c
-	-mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/print examples/print.c rand_gpu.o -lOpenCL -lpthread
+all: print pi pi_compare fastest_multiplier equality
 
-pi: rand_gpu.o examples/pi.c
-	-mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/pi examples/pi.c rand_gpu.o -lOpenCL -lpthread
+install: lib
+	cp lib/rand_gpu.so $(INSTALL_PATH)
 
-pi_compare: rand_gpu.o examples/pi_compare.c
-	-mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/pi_compare examples/pi_compare.c rand_gpu.o -lOpenCL -lpthread
+print: lib/rand_gpu.so examples/print.c
+	@mkdir -p bin
+	$(CC) $(CFLAGS) -o bin/print examples/print.c $(SO)
 
-fastest_multiplier: rand_gpu.o test/fastest_multiplier.c
-	-mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/fastest_multiplier test/fastest_multiplier.c rand_gpu.o -lOpenCL -lpthread
+pi: lib/rand_gpu.so examples/pi.c
+	@mkdir -p bin
+	$(CC) $(CFLAGS) -o bin/pi examples/pi.c $(SO)
 
-rand_gpu.o: src/rand_gpu.c src/util.h
-	$(CC) $(CFLAGS) -c src/rand_gpu.c
+pi_compare: lib/rand_gpu.so examples/pi_compare.c
+	@mkdir -p bin
+	$(CC) $(CFLAGS) -o bin/pi_compare examples/pi_compare.c $(SO)
+
+equality: lib/rand_gpu.so test/equality.cpp
+	@mkdir -p bin
+	$(CPPC) $(CPPFLAGS) -o bin/equality test/equality.cpp $(SO)
+
+fastest_multiplier: lib/rand_gpu.so test/fastest_multiplier.c
+	@mkdir -p bin
+	$(CC) $(CFLAGS) -Wno-unused-value -o bin/fastest_multiplier test/fastest_multiplier.c $(SO)
+
+RandGPU.o: src/RandGPU.cpp
+	$(CPPC) $(CPPFLAGS) -c src/RandGPU.cpp -fPIC
+
+lib/rand_gpu.so: lib install
+
+lib: RandGPU.o
+	@mkdir -p lib
+	$(CPPC) $(CPPFLAGS) -shared -o lib/rand_gpu.so RandGPU.o -lOpenCL -lpthread
 
 clean:
 	-rm *.o
+	-rm lib/*.so

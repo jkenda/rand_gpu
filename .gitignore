@@ -1,5 +1,7 @@
 .vscode/
 bin/
+lib/
 *.o
 output*
 callgrind*
+cachegrind*

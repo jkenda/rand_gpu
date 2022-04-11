@@ -9,28 +9,31 @@
  * 
  */
 
-#include <stdio.h>
-#include "../src/rand_gpu.h"
+#include <cstdio>
+#include <vector>
+#include "../src/RandGPU.hpp"
+
+using std::vector;
 
 int main()
 {
-    rand_gpu64_init(16);
+    RandGPU& r = RandGPU::instance(4);
 
-    size_t bufsiz = 2 * rand_gpu_bufsiz();
-    int64_t a[bufsiz];
-    int64_t b[bufsiz];
-    int64_t c[bufsiz];
+    size_t bufsiz = 2 * r.buffer_size();
+    vector<int64_t> a;
+    vector<int64_t> b;
+    vector<int64_t> c;
 
     for (size_t i = 0; i < bufsiz; i++) {
-        a[i] = rand_gpu64_i64();
+        a[i] = r.rand<int64_t>();
     }
 
     for (size_t i = 0; i < bufsiz; i++) {
-        b[i] = rand_gpu64_i64();
+        b[i] = r.rand<int64_t>();
     }
 
     for (size_t i = 0; i < bufsiz; i++) {
-        c[i] = rand_gpu64_i64();
+        c[i] = r.rand<int64_t>();
     }
 
     // test how similar they are
@@ -47,6 +50,4 @@ int main()
     printf("similarity a <=> b: %lu / %lu, %f\n", simab, bufsiz, (float) simab / bufsiz);
     printf("similarity b <=> c: %lu / %lu, %f\n", simbc, bufsiz, (float) simbc / bufsiz);
     printf("similarity a <=> c: %lu / %lu, %f\n", simac, bufsiz, (float) simac / bufsiz);
-
-    rand_gpu64_clean();
 }
