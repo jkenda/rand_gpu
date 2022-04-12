@@ -3,9 +3,14 @@
 #include <stdio.h>
 #include <limits.h>
 
-int main()
+int main(int argc, char **argv)
 {
-    rand_gpu_init(32);
+    size_t times = 16;
+    if (argc == 2) {
+        sscanf(argv[1], "%lu", &times);
+    }
+    
+    rand_gpu_init(times);
 
     puts("float:");
     for (int i = 0; i < 1000; i++) {

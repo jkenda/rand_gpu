@@ -9,17 +9,22 @@
 #include "../src/rand_gpu.h"
 
 #define ABS(A) ((A >= 0) ? (A) : -(A))
-#define SAMPLES (10000000000UL)
+#define SAMPLES (1000000000UL)
 
 double pi_std, pi_lib;
 float time_std, time_lib;
 struct timespec start, end;
 
-int main()
+int main(int argc, char **argv)
 {
-    long cnt = 0;
+    size_t times = 16;
+    if (argc == 2) {
+        sscanf(argv[1], "%lu", &times);
+    }
+    
+    rand_gpu_init(times);
 
-    rand_gpu_init(32);
+    long cnt = 0;
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 

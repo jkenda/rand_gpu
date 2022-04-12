@@ -14,11 +14,16 @@ double pi_lib;
 float time_lib;
 struct timespec start, end;
 
-int main()
+int main(int argc, char **argv)
 {
-    long cnt = 0;
+    size_t times = 16;
+    if (argc == 2) {
+        sscanf(argv[1], "%lu", &times);
+    }
+    
+    rand_gpu_init(times);
 
-    rand_gpu_init(16);
+    long cnt = 0;
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
