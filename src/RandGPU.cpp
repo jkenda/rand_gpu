@@ -8,7 +8,6 @@
 #include <chrono>
 #include <memory>
 #include <cstring>
-#include <type_traits>
 
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_TARGET_OPENCL_VERSION 120
@@ -84,11 +83,11 @@ RandGPU::RandGPU(size_t multi)
 
     // create kernels
     k_init = cl::Kernel(program, "init");
-    k_generate = cl::Kernel(program, "generate64");
+    k_generate = cl::Kernel(program, "generate");
 
     // create buffers
     state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, nthreads * sizeof(TYCHE_I_STATE_SIZE));
-    random_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size * sizeof(uint8_t));
+    random_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, buffer[0].data.size());
 
 	// generate seeds
 	vector<cl_ulong> seeds(nthreads);
@@ -109,10 +108,12 @@ RandGPU::RandGPU(size_t multi)
     e.wait();
 
     // fill both buffers
-    queue.enqueueNDRangeKernel(k_generate, 0, global_range, local_range);
-    queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size * sizeof(uint8_t), buffer[0].data.data());
-    queue.enqueueNDRangeKernel(k_generate, 0, global_range, local_range);
-    queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size * sizeof(uint8_t), buffer[1].data.data());
+    queue.enqueueNDRangeKernel(k_generate, 0, global_range, local_range, NULL, &e);
+    e.wait();
+    queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buffer[0].data.size(), buffer[0].data.data());
+    queue.enqueueNDRangeKernel(k_generate, 0, global_range, local_range, NULL, &e);
+    e.wait();
+    queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buffer[0].data.size(), buffer[1].data.data());
     buffer[0].ready = true;
     buffer[1].ready = true;
 
@@ -120,7 +121,7 @@ RandGPU::RandGPU(size_t multi)
     queue.enqueueNDRangeKernel(k_generate, 0, global_range, local_range);
 }
 
-void set_ready_flag(cl_event e, cl_int status, void *data)
+void set_flag(cl_event e, cl_int status, void *data)
 {
     std::lock_guard<std::mutex> lock(buffer_ready_lock);
 	*(std::atomic<bool> *) data = true;
@@ -144,9 +145,9 @@ R RandGPU::rand()
 	if (buffer_i >= buf_limit) {
 		buffer[active_buffer].ready = false;
 		// enqueue read data into the empty buffer, generate future numbers
-        queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size * sizeof(uint8_t), buffer[active_buffer].data.data(), NULL, &buffer_ready_event);
+        queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buffer[0].data.size(), buffer[active_buffer].data.data(), NULL, &buffer_ready_event);
 		queue.enqueueNDRangeKernel(k_generate, 0, global_range, local_range);
-		buffer_ready_event.setCallback(CL_COMPLETE, set_ready_flag, (void *) &buffer[active_buffer].ready);
+		buffer_ready_event.setCallback(CL_COMPLETE, set_flag, &buffer[active_buffer].ready);
 
 		// switch active buffer
 		active_buffer = 1^active_buffer;
@@ -189,16 +190,20 @@ void rand_gpu_init(uint32_t multi)
 int64_t  rand_gpu_i64() { return rand_inst->rand<int64_t>();  }
 int32_t  rand_gpu_i32() { return rand_inst->rand<int32_t>();  }
 int16_t  rand_gpu_i16() { return rand_inst->rand<int16_t>();  }
+int8_t   rand_gpu_i8()  { return rand_inst->rand<int8_t>();   }
 uint64_t rand_gpu_u64() { return rand_inst->rand<uint64_t>(); }
 uint32_t rand_gpu_u32() { return rand_inst->rand<uint32_t>(); }
 uint16_t rand_gpu_u16() { return rand_inst->rand<uint16_t>(); }
+uint8_t  rand_gpu_u8()  { return rand_inst->rand<uint8_t>();  }
 
 long  rand_gpu_long()  { return rand_gpu_i64(); }
 int   rand_gpu_int()   { return rand_gpu_i32(); }
 short rand_gpu_short() { return rand_gpu_i16(); }
+char  rand_gpu_char()  { return rand_gpu_i8();  }
 unsigned long  rand_gpu_ulong()  { return rand_gpu_u64(); }
 unsigned int   rand_gpu_uint()   { return rand_gpu_u32(); }
 unsigned short rand_gpu_ushort() { return rand_gpu_u16(); }
+unsigned char  rand_gpu_uchar()  { return rand_gpu_u8(); }
 
 float  rand_gpu_float()  { return rand_inst->rand<float>(); }
 double rand_gpu_double() { return rand_inst->rand<double>(); }

@@ -42,14 +42,8 @@ __kernel void init(__global tyche_i_state *states, __global ulong *seed)
     tyche_i_seed(&states[gid], seed[gid]);
 }
 
-__kernel void generate64(__global tyche_i_state *states, __global ulong *res)
+__kernel void generate(__global tyche_i_state *states, __global ulong *res)
 {
     uint gid = get_global_id(0);
     res[gid] = tyche_i_ulong(&states[gid]);
-}
-
-__kernel void generate32(__global tyche_i_state *states, __global uint *res)
-{
-    uint gid = get_global_id(0);
-    res[gid] = tyche_i_uint(&states[gid]);
 }

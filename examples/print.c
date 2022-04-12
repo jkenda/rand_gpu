@@ -21,13 +21,6 @@ int main()
     }
     printf("\n");
 
-    puts("u16:");
-    for (int i = 0; i < 1000; i++) {
-        uint16_t n = rand_gpu_u16();
-        printf("%u ", n);
-    }
-    printf("\n");
-
     puts("i32:");
     for (int i = 0; i < 1000; i++) {
         uint32_t n = rand_gpu_i32();
@@ -35,10 +28,24 @@ int main()
     }
     printf("\n");
 
+    puts("u16:");
+    for (int i = 0; i < 1000; i++) {
+        uint16_t n = rand_gpu_u16();
+        printf("%u ", n);
+    }
+    printf("\n");
+
     puts("i16:");
     for (int i = 0; i < 1000; i++) {
         int64_t n = rand_gpu_i16();
         printf("%ld ", n);
+    }
+    printf("\n");
+
+    puts("u8:");
+    for (int i = 0; i < 1000; i++) {
+        uint8_t n = rand_gpu_u8();
+        printf("%d ", n);
     }
     printf("\n");
 
