@@ -9,7 +9,7 @@
 #include "../src/rand_gpu.h"
 
 #define ABS(A) ((A >= 0) ? (A) : -(A))
-#define SAMPLES (1000000000UL)
+#define SAMPLES (10000000000UL)
 
 double pi_std, pi_lib;
 float time_std, time_lib;
@@ -23,7 +23,7 @@ int main()
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    for (uint32_t i = 0; i < SAMPLES; i++) {
+    for (uint_fast64_t i = 0; i < SAMPLES; i++) {
         float a = rand_gpu_float();
         float b = rand_gpu_float();
         if (a*a + b*b < 1.0f) {
@@ -42,7 +42,7 @@ int main()
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    for (uint32_t i = 0; i < SAMPLES; i++) {
+    for (uint_fast64_t i = 0; i < SAMPLES; i++) {
         float a = (float) rand() / RAND_MAX;
         float b = (float) rand() / RAND_MAX;
         if (a*a + b*b < 1.0f) {
