@@ -11,7 +11,7 @@ typedef union{
 
 #define TYCHE_I_ROT(a,b) (((a) >> (b)) | ((a) << (32 - (b))))
 
-#define tyche_i_ulong(state) (tyche_i_advance(state), state.res)
+#define tyche_i_ulong(state) (tyche_i_advance(&state), state.res)
 void tyche_i_advance(__global tyche_i_state* state){
 	state->b = TYCHE_I_ROT(state->b, 7) ^ state->c;
 	state->c -= state->d;
@@ -33,17 +33,15 @@ void tyche_i_seed(__global tyche_i_state* state, ulong seed){
 	}
 }
 
-#define tyche_i_uint(state) ((uint)tyche_i_ulong(state))
-
 
 __kernel void init(__global tyche_i_state *states, __global ulong *seed)
 {
-    uint gid = get_global_id(0);
+    const uint gid = get_global_id(0);
     tyche_i_seed(&states[gid], seed[gid]);
 }
 
 __kernel void generate(__global tyche_i_state *states, __global ulong *res)
 {
-    uint gid = get_global_id(0);
-    res[gid] = tyche_i_ulong(&states[gid]);
+    const uint gid = get_global_id(0);
+    res[gid] = tyche_i_ulong(states[gid]);
 }
