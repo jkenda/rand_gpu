@@ -2,7 +2,6 @@
 
 #include <vector>
 #include <mutex>
-#include <atomic>
 #include <condition_variable>
 
 #define CL_TARGET_OPENCL_VERSION 120
@@ -30,7 +29,7 @@ private:
     size_t buf_limit;
 
     cl::Context      context;
-    cl::CommandQueue queue;
+    cl::CommandQueue queue[2];
 	cl::Buffer       state_buf;
 	cl::Buffer       random_buf;
 	cl::Kernel       k_init;
