@@ -12,82 +12,82 @@ int main(int argc, char **argv)
     
     rand_gpu_init(times);
 
-    puts("u8:");
+    printf("u8: %lu bits\n", 8 * sizeof(uint8_t));
     for (int i = 0; i < 100; i++) {
         uint8_t n = rand_gpu_u8();
         printf("%u ", n);
     }
     printf("\n");
 
-    puts("i8:");
+    printf("i8: %lu bits\n", 8 * sizeof(int8_t));
     for (int i = 0; i < 100; i++) {
         int8_t n = rand_gpu_i8();
         printf("%d ", n);
     }
     printf("\n");
 
-    puts("u16:");
+    printf("u16: %lu bits\n", 8 * sizeof(uint16_t));
     for (int i = 0; i < 100; i++) {
         uint16_t n = rand_gpu_u16();
         printf("%u ", n);
     }
     printf("\n");
 
-    puts("i16:");
+    printf("i16: %lu bits\n", 8 * sizeof(int16_t));
     for (int i = 0; i < 100; i++) {
         int16_t n = rand_gpu_i16();
         printf("%d ", n);
     }
     printf("\n");
 
-    puts("u32:");
+    printf("u32: %lu bits\n", 8 * sizeof(uint32_t));
     for (int i = 0; i < 100; i++) {
         uint32_t n = rand_gpu_u32();
         printf("%u ", n);
     }
     printf("\n");
 
-    puts("i32:");
+    printf("i32: %lu bits\n", 8 * sizeof(int32_t));
     for (int i = 0; i < 100; i++) {
         int32_t n = rand_gpu_i32();
         printf("%d ", n);
     }
     printf("\n");
 
-    puts("u64:");
+    printf("u64: %lu bits\n", 8 * sizeof(uint64_t));
     for (int i = 0; i < 100; i++) {
         uint64_t n = rand_gpu_u64();
         printf("%lu ", n);
     }
     printf("\n");
 
-    puts("i64:");
+    printf("i64: %lu bits\n", 8 * sizeof(int64_t));
     for (int i = 0; i < 100; i++) {
         int64_t n = rand_gpu_i64();
         printf("%ld ", n);
     }
     printf("\n");
 
-    puts("float:");
+    printf("float: %lu bits\n", 8 * sizeof(float));
     for (int i = 0; i < 100; i++) {
         float n = rand_gpu_float();
         printf("%f ", n);
     }
     printf("\n");
 
-    puts("double:");
+    printf("double: %lu bits\n", 8 * sizeof(double));
     for (int i = 0; i < 100; i++) {
         double n = rand_gpu_double();
         printf("%lf ", n);
     }
     printf("\n");
 
-    puts("long double:");
+    printf("long double: %lu bits\n", 8 * sizeof(long double));
     for (int i = 0; i < 100; i++) {
         long double n = rand_gpu_long_double();
         printf("%Lf ", n);
     }
     printf("\n");
 
-    printf("memory usage: %lu\n", rand_gpu_bufsiz() * sizeof(uint32_t));
+    printf("memory usage: %lu bytes\n", rand_gpu_bufsiz() * sizeof(uint32_t));
 }
