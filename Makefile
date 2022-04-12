@@ -1,13 +1,15 @@
 CC= gcc
 CPPC= g++
 CFLAGS= -O3 -s -Wall -Wpedantic
-CPPFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
+CPPFLAGS= -O3 -g -Wall -Wpedantic
 INSTALL_PATH= $(HOME)/.local/lib/
+
+SLURM_ARGS= --reservation=fri -c2 -G2
 
 default: lib/librand_gpu.so
 
 all: print pi pi_compare fastest_multiplier equality
-lib/librand_gpu.so: lib install
+lib/librand_gpu.so: lib bin/test_kernel install
 
 lib: RandGPU.o
 	@mkdir -p lib
@@ -17,8 +19,23 @@ install: lib
 	@mkdir -p $(INSTALL_PATH)
 	cp lib/librand_gpu.so $(INSTALL_PATH)
 
-RandGPU.o: src/RandGPU.cpp
+run: pi_compare
+	LD_LIBRARY_PATH=~/.local/lib bin/pi_compare
+
+run_slurm:
+	slurm $(SLURM_ARGS) LD_LIBRARY_PATH=~/.local/lib bin/pi_compare | tee output &
+
+
+bin/test_kernel: test/test_kernel.cpp kernel.hpp
+	@mkdir -p bin
+	$(CPPC) $(CPPFLAGS) -o bin/test_kernel test/test_kernel.cpp -lOpenCL
+	@LD_LIBRARY_PATH=lib bin/test_kernel
+
+RandGPU.o: src/RandGPU.cpp src/exceptions.hpp kernel.hpp
 	$(CPPC) $(CPPFLAGS) -c src/RandGPU.cpp -fPIC
+
+kernel.hpp: src/kernels/server.cl
+	tools/convert_kernel.py src/kernels/server.cl
 
 print: lib/librand_gpu.so examples/print.c
 	@mkdir -p bin
@@ -43,3 +60,4 @@ fastest_multiplier: lib/librand_gpu.so test/fastest_multiplier.c
 clean:
 	-rm *.o
 	-rm lib/*.so
+	-rm kernel.hpp

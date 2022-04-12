@@ -5,3 +5,4 @@ lib/
 output*
 callgrind*
 cachegrind*
+kernel.hpp

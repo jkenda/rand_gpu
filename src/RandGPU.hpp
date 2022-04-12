@@ -11,6 +11,8 @@
 struct Buffer
 {
     std::vector<uint8_t> data;
+    cl::CommandQueue queue;
+    cl::Event ready_event;
     bool ready;
 };
 
@@ -25,25 +27,20 @@ public:
 
 private:
     size_t nthreads;
+    size_t wg_size;
     size_t buf_size;
     size_t buf_limit;
 
     cl::Context      context;
-    cl::CommandQueue queue[2];
 	cl::Buffer       state_buf;
 	cl::Buffer       random_buf;
 	cl::Kernel       k_init;
 	cl::Kernel       k_generate;
 
-    cl::NDRange global_range;
-    cl::NDRange local_range;
-
     Buffer buffer[2];
 
-    uint_fast32_t active_buffer = 0;
-    uint_fast32_t buffer_i = 1;
-
-    cl::Event buffer_ready_event;
+    uint_fast32_t active;
+    uint_fast32_t buffer_i;
 
     RandGPU(size_t multi);
     RandGPU();
