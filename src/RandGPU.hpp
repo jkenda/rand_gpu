@@ -11,7 +11,6 @@
 struct Buffer
 {
     std::vector<uint8_t> data;
-    cl::CommandQueue queue;
     cl::Event ready_event;
     bool ready;
 };
@@ -32,6 +31,9 @@ private:
     size_t buf_limit;
 
     cl::Context      context;
+    cl::CommandQueue generate_queue;
+    cl::CommandQueue cancel_queue;
+
 	cl::Buffer       state_buf;
 	cl::Buffer       random_buf;
 	cl::Kernel       k_init;
