@@ -18,7 +18,7 @@ struct Buffer
 class RandGPU
 {
 public:
-    static RandGPU &instance(size_t multi);
+    static RandGPU& instance(size_t multi);
 
     template <typename R>
     R rand();

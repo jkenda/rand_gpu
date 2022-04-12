@@ -42,7 +42,7 @@ TODO: circular buffer on graphics card, offset read
 */
 
 
-RandGPU &RandGPU::instance(size_t multi)
+RandGPU& RandGPU::instance(size_t multi)
 {
     static RandGPU inst(multi);
     return inst;
@@ -182,6 +182,10 @@ R RandGPU::rand()
     return num;
 }
 
+/*
+template specialization for floating point numbers
+*/
+
 template <>
 float RandGPU::rand<float>()
 {
@@ -192,6 +196,12 @@ template <>
 double RandGPU::rand<double>()
 {
     return rand<uint64_t>() / (double) UINT64_MAX;
+}
+
+template <>
+long double RandGPU::rand<long double>()
+{
+    return rand<uint64_t>() / (long double) UINT64_MAX;
 }
 
 size_t RandGPU::buffer_size()
@@ -224,17 +234,9 @@ uint32_t rand_gpu_u32() { return rand_inst->rand<uint32_t>(); }
 uint16_t rand_gpu_u16() { return rand_inst->rand<uint16_t>(); }
 uint8_t  rand_gpu_u8()  { return rand_inst->rand<uint8_t>();  }
 
-long  rand_gpu_long()  { return rand_gpu_i64(); }
-int   rand_gpu_int()   { return rand_gpu_i32(); }
-short rand_gpu_short() { return rand_gpu_i16(); }
-char  rand_gpu_char()  { return rand_gpu_i8();  }
-unsigned long  rand_gpu_ulong()  { return rand_gpu_u64(); }
-unsigned int   rand_gpu_uint()   { return rand_gpu_u32(); }
-unsigned short rand_gpu_ushort() { return rand_gpu_u16(); }
-unsigned char  rand_gpu_uchar()  { return rand_gpu_u8();  }
-
-float  rand_gpu_float()  { return rand_inst->rand<float>(); }
-double rand_gpu_double() { return rand_inst->rand<double>(); }
+float       rand_gpu_float()       { return rand_inst->rand<float>();       }
+double      rand_gpu_double()      { return rand_inst->rand<double>();      }
+long double rand_gpu_long_double() { return rand_inst->rand<long double>(); }
 
 size_t rand_gpu_bufsiz() { return rand_inst->buffer_size(); }
 

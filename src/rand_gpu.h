@@ -23,26 +23,19 @@
  */
 void rand_gpu_init(uint32_t multi);
 
+
 uint64_t rand_gpu_u64();
-int64_t rand_gpu_i64();
+int64_t  rand_gpu_i64();
 uint32_t rand_gpu_u32();
-int32_t rand_gpu_i32();
+int32_t  rand_gpu_i32();
 uint16_t rand_gpu_u16();
-int16_t rand_gpu_i16();
-uint8_t rand_gpu_u8();
-int8_t rand_gpu_i8();
+int16_t  rand_gpu_i16();
+uint8_t  rand_gpu_u8();
+int8_t   rand_gpu_i8();
 
-long rand_gpu_long();
-unsigned long rand_gpu_ulong();
-int rand_gpu_int();
-unsigned int rand_gpu_unsigned_int();
-short rand_gpu_short();
-unsigned short rand_gpu_ushort();
-char rand_gpu_char();
-unsigned char rand_gpu_uchar();
-
-float rand_gpu_float();
-double rand_gpu_double();
+float       rand_gpu_float();
+double      rand_gpu_double();
+long double rand_gpu_long_double();
 
 
 size_t rand_gpu_bufsiz();
