@@ -4,7 +4,9 @@
 #include <mutex>
 #include <condition_variable>
 
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_TARGET_OPENCL_VERSION 120
+#define __CL_ENABLE_EXCEPTIONS
 #include "../include/cl.hpp"
 
 
@@ -18,34 +20,20 @@ struct Buffer
 class RandGPU
 {
 public:
-    static RandGPU& instance(size_t multi);
+    RandGPU(size_t multi);
 
     template <typename R>
     R rand();
     size_t buffer_size();
 
 private:
-    size_t nthreads;
-    size_t wg_size;
-    size_t buf_size;
-    size_t buf_limit;
+    cl::CommandQueue queue;
 
-    cl::Context      context;
-    cl::CommandQueue generate_queue;
-    cl::CommandQueue cancel_queue;
-
-	cl::Buffer       state_buf;
-	cl::Buffer       random_buf;
-	cl::Kernel       k_init;
-	cl::Kernel       k_generate;
+	cl::Buffer  random_buf;
+	cl::Kernel  k_generate;
 
     Buffer buffer[2];
 
-    uint_fast32_t active;
-    uint_fast32_t buffer_i;
-
-    RandGPU(size_t multi);
-    RandGPU();
-    RandGPU(const RandGPU&) = delete;
-    RandGPU& operator= (const RandGPU&) = delete;
+    size_t active;
+    size_t buffer_i;
 };

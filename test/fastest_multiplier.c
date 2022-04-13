@@ -15,16 +15,18 @@ struct timespec start, end;
 
 float get_time(uint32_t multi)
 {
-    rand_gpu_init(multi);
+    rand_gpu_rng rng = rand_gpu_new(multi);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     for (uint32_t i = 0; i < SAMPLES; i++) {
-        rand_gpu_float();
-        rand_gpu_float();
+        rand_gpu_float(rng);
+        rand_gpu_float(rng);
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+
+    rand_gpu_delete(rng);
 
     float time = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
 

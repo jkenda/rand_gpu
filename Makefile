@@ -7,7 +7,7 @@ SLURM_ARGS= --reservation=fri -c2 -G2
 
 default: lib/librand_gpu.so
 
-all: print pi pi_compare fastest_multiplier equality
+all: print pi_simple pi fastest_multiplier equality
 lib/librand_gpu.so: lib bin/test_kernel install
 
 lib: RandGPU.o
@@ -18,11 +18,11 @@ install: lib
 	@mkdir -p $(INSTALL_PATH)
 	cp lib/librand_gpu.so $(INSTALL_PATH)
 
-run: pi_compare
-	LD_LIBRARY_PATH=~/.local/lib bin/pi_compare
+run: pi
+	LD_LIBRARY_PATH=~/.local/lib bin/pi
 
 run_slurm:
-	slurm $(SLURM_ARGS) LD_LIBRARY_PATH=~/.local/lib bin/pi_compare | tee output &
+	srun $(SLURM_ARGS) LD_LIBRARY_PATH=~/.local/lib bin/pi | tee output &
 
 
 bin/test_kernel: test/test_kernel.cpp kernel.hpp
@@ -30,7 +30,7 @@ bin/test_kernel: test/test_kernel.cpp kernel.hpp
 	$(CPPC) $(FLAGS) -o bin/test_kernel test/test_kernel.cpp -lOpenCL
 	@LD_LIBRARY_PATH=lib bin/test_kernel
 
-RandGPU.o: src/RandGPU.cpp src/exceptions.hpp kernel.hpp
+RandGPU.o: src/RandGPU.cpp src/RandGPU.hpp src/exceptions.hpp kernel.hpp
 	$(CPPC) $(FLAGS) -c src/RandGPU.cpp -fPIC
 
 kernel.hpp: src/kernels/server.cl
@@ -44,9 +44,13 @@ pi: lib/librand_gpu.so examples/pi.c
 	@mkdir -p bin
 	$(CC) $(FLAGS) -Llib -o bin/pi examples/pi.c -lrand_gpu
 
-pi_compare: lib/librand_gpu.so examples/pi_compare.c
+pi_simple: lib/librand_gpu.so examples/pi_simple.c
 	@mkdir -p bin
-	$(CC) $(FLAGS) -Llib -o bin/pi_compare examples/pi_compare.c -lrand_gpu
+	$(CC) $(FLAGS) -Llib -o bin/pi_simple examples/pi_simple.c -lrand_gpu
+
+pi_parallel: lib/librand_gpu.so examples/pi_parallel.c
+	@mkdir -p bin
+	$(CC) $(FLAGS) -Llib -o bin/pi_parallel examples/pi_parallel.c -lm -lrand_gpu -fopenmp
 
 equality: lib/librand_gpu.so test/equality.cpp
 	@mkdir -p bin

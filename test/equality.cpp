@@ -17,7 +17,7 @@ using std::vector;
 
 int main()
 {
-    RandGPU& r = RandGPU::instance(4);
+    RandGPU r(4);
 
     size_t bufsiz = 2 * r.buffer_size();
     vector<int64_t> a;
