@@ -1,6 +1,7 @@
 #include <vector>
 #include <cstdlib>
 #include <iostream>
+#include <cstring>
 
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_TARGET_OPENCL_VERSION 120
@@ -28,7 +29,7 @@ int main()
     cl::Device device = devices.at(0);
 
     cl::Context context = cl::Context(devices);
-    cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE.c_str(), KERNEL_SOURCE.length()));
+    cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE, strlen(KERNEL_SOURCE)));
     cl::Program program = cl::Program(context, sources);
 
     program.build(devices, "");

@@ -3,11 +3,12 @@
 #include <math.h>
 #include <omp.h>
 #include <time.h>
+#include <sys/time.h>
 #include <inttypes.h>
 #include "../src/rand_gpu.h"
 
 #define NTHREADS 8
-#define ITER 2048U
+#define ITER (2048U * 1024U)
 
 float abs_f(float a)
 {
@@ -71,9 +72,22 @@ float pi_lib()
 
 int main()
 {
+    struct timespec start, end;
+    float time_std, time_lib;
+
     printf("real pi: %lf\n", M_PI);
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     float pi_s = pi_std();
-    printf("std pi: %f +/- %f\n", pi_s, abs_f(M_PI - pi_s));
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    time_std = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
+
+    printf("std pi: %f +/- %f, %f s\n", pi_s, abs_f(M_PI - pi_s), time_std);
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     float pi_l = pi_lib();
-    printf("lib pi: %f +/- %f\n", pi_l, abs_f(M_PI - pi_l));
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    time_lib = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
+    printf("lib pi: %f +/- %f, %f s\n", pi_l, abs_f(M_PI - pi_l), time_lib);
+    printf("speedup = %f\n", time_std / time_lib);
 }

@@ -22,15 +22,15 @@ run: pi
 	LD_LIBRARY_PATH=~/.local/lib bin/pi
 
 run_slurm:
-	srun $(SLURM_ARGS) LD_LIBRARY_PATH=~/.local/lib bin/pi | tee output &
+	srun $(SLURM_ARGS) bin/pi | tee output &
 
 
-bin/test_kernel: test/test_kernel.cpp kernel.hpp
+bin/test_kernel: tools/test_kernel.cpp kernel.hpp
 	@mkdir -p bin
-	$(CPPC) $(FLAGS) -o bin/test_kernel test/test_kernel.cpp -lOpenCL
+	$(CPPC) $(FLAGS) -o bin/test_kernel tools/test_kernel.cpp -lOpenCL
 	@LD_LIBRARY_PATH=lib bin/test_kernel
 
-RandGPU.o: src/RandGPU.cpp src/RandGPU.hpp src/exceptions.hpp kernel.hpp
+RandGPU.o: src/RandGPU.cpp src/RandGPU.hpp kernel.hpp
 	$(CPPC) $(FLAGS) -c src/RandGPU.cpp -fPIC
 
 kernel.hpp: src/kernels/server.cl

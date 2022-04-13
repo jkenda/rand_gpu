@@ -12,8 +12,7 @@ with open(sys.argv[1], "r") as f:
     src = f.readlines()
 
 dst = """
-#include <string>
-static const std::string KERNEL_SOURCE =
+static const char *KERNEL_SOURCE =
 """
 
 for line in src:
