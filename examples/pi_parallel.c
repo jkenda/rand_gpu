@@ -52,7 +52,7 @@ float pi_lib()
 
     #pragma omp parallel num_threads(NTHREADS)
     {
-        rand_gpu_rng rng = rand_gpu_new(2);
+        rand_gpu_rng *rng = rand_gpu_new(2);
         uint_fast64_t cnt_l = 0;
 
         for (uint32_t i = 0; i < ITER; i++) {

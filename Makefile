@@ -1,17 +1,15 @@
 CC= gcc
 CXXC= g++
-CFLAGS= -g -Wall -Wpedantic
-CXXFLAGS= --std=c++17 -g -Wall -Wpedantic
+CFLAGS= -O3 -g -Wall -Wpedantic
+CXXFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
 INSTALL_PATH= $(HOME)/.local/lib/
 
 SLURM_ARGS= --reservation=fri -c2 -G2
 
 default: lib/librand_gpu.so
-windows: lib/librand_gpu.dll
 
 all: print pi_simple pi fastest_multiplier equality
 lib/librand_gpu.so: lib bin/test_kernel install
-lib/librand_gpu.dll: lib bin/test_kernel dll
 
 lib: RNG.o
 	@mkdir -p lib

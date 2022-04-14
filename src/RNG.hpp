@@ -41,7 +41,7 @@ namespace rand_gpu
          * @tparam T type of random number to be returned - only \a uint<N>_t implemented
          */
         template <typename T = uint64_t>
-        T rand();
+        T get_random();
 
         /**
          * @brief Returns size of random number buffer in bytes

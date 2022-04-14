@@ -15,7 +15,7 @@ struct timespec start, end;
 
 float get_time(uint32_t multi)
 {
-    rand_gpu_rng rng = rand_gpu_new(multi);
+    rand_gpu_rng *rng = rand_gpu_new(multi);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 

@@ -2,8 +2,8 @@
  * @file equality.c
  * @author Jakob Kenda (kenda.jakob@gmail.com)
  * @brief Tests whether the random number buffers change over time
- *        Result should be 0.0 for a <=> b, a <=> c and b <=> c
- * @version 0.1
+ *        The result should be 0.0 for a <=> b, a <=> c and b <=> c
+ * @version 0.2
  * @date 2022-04-09
  * 
  * @copyright Copyright (c) 2022
@@ -21,20 +21,20 @@ int main()
     rand_gpu::RNG rng(4);
 
     size_t bufsiz = rng.buffer_size();
-    vector<unsigned long> a;
-    vector<unsigned long> b;
-    vector<unsigned long> c;
+    vector<unsigned long> a(bufsiz);
+    vector<unsigned long> b(bufsiz);
+    vector<unsigned long> c(bufsiz);
 
     for (size_t i = 0; i < bufsiz; i++) {
-        a[i] = rng.rand<unsigned long>();
+        a.emplace_back(rng.get_random<unsigned long>());
     }
 
     for (size_t i = 0; i < bufsiz; i++) {
-        b[i] = rng.rand<unsigned long>();
+        b.emplace_back(rng.get_random<unsigned long>());
     }
 
     for (size_t i = 0; i < bufsiz; i++) {
-        c[i] = rng.rand<unsigned long>();
+        c.emplace_back(rng.get_random<unsigned long>());
     }
 
     // test how similar they are

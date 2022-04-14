@@ -28,7 +28,7 @@ int main(int argc, char **argv)
         sscanf(argv[1], "%lu", &times);
     }
     
-    rand_gpu_rng rng = rand_gpu_new(times);
+    rand_gpu_rng *rng = rand_gpu_new(times);
 
     long cnt = 0;
 
