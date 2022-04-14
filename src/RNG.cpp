@@ -287,6 +287,8 @@ void rand_gpu_delete(int rng)
     RNGs.erase(RNGs.begin() + rng);
 }
 
+size_t rand_gpu_buffer_size(rand_gpu_rng rng) { return RNGs[rng]->buffer_size(); }
+size_t rand_gpu_memory() { return rand_gpu::mem_all; }
 
 uint64_t rand_gpu_u64(int rng) { return RNGs[rng]->rand<uint64_t>(); }
 uint32_t rand_gpu_u32(int rng) { return RNGs[rng]->rand<uint32_t>(); }
@@ -296,7 +298,5 @@ uint8_t  rand_gpu_u8(int rng)  { return RNGs[rng]->rand<uint8_t>();  }
 float       rand_gpu_float(int rng)       { return RNGs[rng]->rand<float>();       }
 double      rand_gpu_double(int rng)      { return RNGs[rng]->rand<double>();      }
 long double rand_gpu_long_double(int rng) { return RNGs[rng]->rand<long double>(); }
-
-size_t rand_gpu_memory() { return rand_gpu::mem_all; }
 
 }
