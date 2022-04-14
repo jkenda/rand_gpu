@@ -33,7 +33,7 @@ int main()
     try {
         program.build(devices, "");
     }
-    catch (cl::Error) {
+    catch (cl::Error const&) {
         std::string name     = device.getInfo<CL_DEVICE_NAME>();
         std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
         fputs(buildlog.c_str(), stderr);

@@ -93,7 +93,7 @@ namespace rand_gpu
             try {
                 program.build({ device }, "");
             }
-            catch (cl::Error) {
+            catch (cl::Error const&) {
                 std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
                 fputs(buildlog.c_str(), stderr);
                 throw cl::Error(CL_BUILD_PROGRAM_FAILURE);
@@ -163,7 +163,7 @@ namespace rand_gpu
     }
 
     template <typename T>
-    T RNG::rand()
+    T RNG::get_random()
     {
         Buffer &active_buffer = buffer[active];
 
@@ -189,12 +189,10 @@ namespace rand_gpu
             */
 
             // enqueue read data into the empty buffer, generate future numbers
-            {
-                lock_guard<mutex> lock(queue_lock);
-                queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size, active_buffer.data.data(), NULL, &active_buffer.ready_event);
-                queue.enqueueNDRangeKernel(k_generate, 0, cl::NDRange(nthreads), cl::NullRange);
-                active_buffer.ready_event.setCallback(CL_COMPLETE, set_flag, this);
-            }
+            lock_guard<mutex> lock(queue_lock);
+            queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size, active_buffer.data.data(), NULL, &active_buffer.ready_event);
+            queue.enqueueNDRangeKernel(k_generate, 0, cl::NDRange(nthreads), cl::NullRange);
+            active_buffer.ready_event.setCallback(CL_COMPLETE, set_flag, this);
 
             // switch active buffer
             active = !active;
@@ -222,45 +220,41 @@ namespace rand_gpu
     */
 
     template <>
-    float RNG::rand<float>()
+    float RNG::get_random<float>()
     {
-        return rand<uint32_t>() / (float) UINT32_MAX;
+        return get_random<uint32_t>() / (float) UINT32_MAX;
     }
 
     template <>
-    double RNG::rand<double>()
+    double RNG::get_random<double>()
     {
-        return rand<uint64_t>() / (double) UINT64_MAX;
+        return get_random<uint64_t>() / (double) UINT64_MAX;
     }
 
     template <>
-    long double RNG::rand<long double>()
+    long double RNG::get_random<long double>()
     {
-        return rand<uint64_t>() / (long double) UINT64_MAX;
+        return get_random<uint64_t>() / (long double) UINT64_MAX;
     }
 
     template <>
-    bool RNG::rand<bool>()
+    bool RNG::get_random<bool>()
     {
-        return rand<uint64_t>() > UINT64_MAX / 2 ? true : false;
+        return get_random<uint64_t>() > UINT64_MAX / 2 ? true : false;
     }
 
     /*
     instantiate templates for all primitives
     */
 
-    template uint64_t RNG::rand<uint64_t>();
-    template uint32_t RNG::rand<uint32_t>();
-    template uint16_t RNG::rand<uint16_t>();
-    template uint8_t RNG::rand<uint8_t>();
-    template int64_t RNG::rand<int64_t>();
-    template int32_t RNG::rand<int32_t>();
-    template int16_t RNG::rand<int16_t>();
-    template int8_t RNG::rand<int8_t>();
-
-#ifdef __uint128_t
-    template __uint128_t RNG::rand<__uint128_t>();
-#endif
+    template uint64_t RNG::get_random<uint64_t>();
+    template uint32_t RNG::get_random<uint32_t>();
+    template uint16_t RNG::get_random<uint16_t>();
+    template uint8_t  RNG::get_random<uint8_t>();
+    template int64_t  RNG::get_random<int64_t>();
+    template int32_t  RNG::get_random<int32_t>();
+    template int16_t  RNG::get_random<int16_t>();
+    template int8_t   RNG::get_random<int8_t>();
 
 } // namespace rand_gpu
 
@@ -269,34 +263,28 @@ namespace rand_gpu
 C function wrappers
 */
 
-vector<rand_gpu::RNG *> RNGs;
-
 extern "C" {
 
-int rand_gpu_new(uint32_t multi)
+rand_gpu_rng *rand_gpu_new(uint32_t multi)
 {
-    lock_guard<mutex> lock(rand_gpu::init_lock);
-    RNGs.emplace_back(new rand_gpu::RNG(multi));
-    return RNGs.size() - 1;
+    return static_cast<rand_gpu_rng *>(new rand_gpu::RNG(multi));
 }
 
-void rand_gpu_delete(int rng)
+void rand_gpu_delete(rand_gpu_rng *rng)
 {
-    lock_guard<mutex> lock(rand_gpu::init_lock);
-    delete RNGs[rng];
-    RNGs.erase(RNGs.begin() + rng);
+    delete static_cast<rand_gpu::RNG *>(rng);
 }
 
-size_t rand_gpu_buffer_size(rand_gpu_rng rng) { return RNGs[rng]->buffer_size(); }
+size_t rand_gpu_buffer_size(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->buffer_size(); }
 size_t rand_gpu_memory() { return rand_gpu::mem_all; }
 
-uint64_t rand_gpu_u64(int rng) { return RNGs[rng]->rand<uint64_t>(); }
-uint32_t rand_gpu_u32(int rng) { return RNGs[rng]->rand<uint32_t>(); }
-uint16_t rand_gpu_u16(int rng) { return RNGs[rng]->rand<uint16_t>(); }
-uint8_t  rand_gpu_u8(int rng)  { return RNGs[rng]->rand<uint8_t>();  }
+uint64_t rand_gpu_u64(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->get_random<uint64_t>(); }
+uint32_t rand_gpu_u32(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->get_random<uint32_t>(); }
+uint16_t rand_gpu_u16(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->get_random<uint16_t>(); }
+uint8_t  rand_gpu_u8(rand_gpu_rng *rng)  { return static_cast<rand_gpu::RNG *>(rng)->get_random<uint8_t>();  }
 
-float       rand_gpu_float(int rng)       { return RNGs[rng]->rand<float>();       }
-double      rand_gpu_double(int rng)      { return RNGs[rng]->rand<double>();      }
-long double rand_gpu_long_double(int rng) { return RNGs[rng]->rand<long double>(); }
+float       rand_gpu_float(rand_gpu_rng *rng)       { return static_cast<rand_gpu::RNG *>(rng)->get_random<float>();       }
+double      rand_gpu_double(rand_gpu_rng *rng)      { return static_cast<rand_gpu::RNG *>(rng)->get_random<double>();      }
+long double rand_gpu_long_double(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->get_random<long double>(); }
 
 }
