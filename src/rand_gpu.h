@@ -44,14 +44,7 @@ size_t rand_gpu_memory();
  * @brief Returns next random number.
  * @param rng from which RNG to retrieve the number
  */
-
 uint64_t rand_gpu_u64(rand_gpu_rng rng);
-
-/**
- * @brief Returns next random number.
- * @param rng from which RNG to retrieve the number
- */
-int64_t  rand_gpu_i64(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random number.
@@ -63,31 +56,13 @@ uint32_t rand_gpu_u32(rand_gpu_rng rng);
  * @brief Returns next random number.
  * @param rng from which RNG to retrieve the number
  */
-int32_t  rand_gpu_i32(rand_gpu_rng rng);
-
-/**
- * @brief Returns next random number.
- * @param rng from which RNG to retrieve the number
- */
 uint16_t rand_gpu_u16(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random number.
  * @param rng from which RNG to retrieve the number
  */
-int16_t  rand_gpu_i16(rand_gpu_rng rng);
-
-/**
- * @brief Returns next random number.
- * @param rng from which RNG to retrieve the number
- */
 uint8_t  rand_gpu_u8(rand_gpu_rng rng);
-
-/**
- * @brief Returns next random number.
- * @param rng from which RNG to retrieve the number
- */
-int8_t   rand_gpu_i8(rand_gpu_rng rng);
 
 
 /**

@@ -1,7 +1,8 @@
 /**
  * @file test.c
  * @author Jakob Kenda (kenda.jakob@gmail.com)
- * @brief Tests whether the random number buffers stay the same over time
+ * @brief Tests whether the random number buffers change over time
+ *        Result should be 0.0 for a <=> b, a <=> c and b <=> c
  * @version 0.1
  * @date 2022-04-09
  * 
@@ -17,23 +18,23 @@ using std::vector;
 
 int main()
 {
-    RandGPU r(4);
+    rand_gpu::RNG rng(4);
 
-    size_t bufsiz = 2 * r.buffer_size();
-    vector<int64_t> a;
-    vector<int64_t> b;
-    vector<int64_t> c;
+    size_t bufsiz = rng.buffer_size();
+    vector<unsigned long> a;
+    vector<unsigned long> b;
+    vector<unsigned long> c;
 
     for (size_t i = 0; i < bufsiz; i++) {
-        a[i] = r.rand<int64_t>();
+        a[i] = rng.rand<unsigned long>();
     }
 
     for (size_t i = 0; i < bufsiz; i++) {
-        b[i] = r.rand<int64_t>();
+        b[i] = rng.rand<unsigned long>();
     }
 
     for (size_t i = 0; i < bufsiz; i++) {
-        c[i] = r.rand<int64_t>();
+        c[i] = rng.rand<unsigned long>();
     }
 
     // test how similar they are

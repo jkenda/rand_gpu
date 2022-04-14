@@ -15,50 +15,64 @@
 #include <mutex>
 #include <condition_variable>
 #include <array>
-#include <memory>
 
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_TARGET_OPENCL_VERSION 120
 #define __CL_ENABLE_EXCEPTIONS
 #include "../include/cl.hpp"
 
-
-struct Buffer
+namespace rand_gpu
 {
-    std::vector<uint8_t> data;
-    cl::Event ready_event;
-    bool ready;
-};
+    class RNG
+    {
+    public:
+        /**
+         * @brief Construct a new RandGPU object
+         * 
+         * @param multi buffer size multiplier
+         */
+        RNG(size_t multi);
 
-class RandGPU
-{
-public:
-    RandGPU(size_t multi);
+        ~RNG();
 
-    template <typename R>
-    R rand();
-    size_t buffer_size();
+        /**
+         * @brief Returns next random number.
+         * 
+         * @tparam T type of random number to be returned - only \a uint<N>_t implemented
+         */
+        template <typename T = uint64_t>
+        T rand();
 
-    // copy/move
-    RandGPU(RandGPU&&);
-    RandGPU(const RandGPU&) = delete;
-    RandGPU& operator=(RandGPU&&) = default;
-    RandGPU& operator=(const RandGPU&) = delete;
+        /**
+         * @brief Returns size of random number buffer in bytes
+         * 
+         * @return size_t 
+         */
+        size_t buffer_size();
 
-private:
-    std::unique_ptr<std::mutex> buffer_ready_lock;
-    std::unique_ptr<std::condition_variable> buffer_ready_cond;
+    private:
+        struct Buffer
+        {
+            std::vector<uint8_t> data;
+            cl::Event ready_event;
+            bool ready;
+        };
 
-    cl::CommandQueue queue;
+        static void set_flag(cl_event e, cl_int status, void *data);
 
-    cl::Buffer  state_buf;
-	cl::Buffer  random_buf;
-	cl::Kernel  k_generate;
+        std::mutex buffer_ready_lock;
+        std::condition_variable buffer_ready_cond;
 
-    std::array<Buffer, 2> buffer;
+        cl::CommandQueue queue;
 
-    size_t active;
-    size_t buffer_i;
+        cl::Buffer  state_buf;
+        cl::Buffer  random_buf;
+        cl::Kernel  k_generate;
 
-    static void set_flag(cl_event e, cl_int status, void *data);
-};
+        std::array<Buffer, 2> buffer;
+
+        size_t active;
+        size_t buffer_i;
+    };
+
+} // namespace rand_gpu

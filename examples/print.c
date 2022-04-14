@@ -16,7 +16,7 @@ int main()
 
     printf("i8: %lu bits\n", 8 * sizeof(int8_t));
     for (int i = 0; i < 5000; i++) {
-        int8_t n = rand_gpu_i8(rng);
+        int8_t n = rand_gpu_u8(rng);
         printf("%d ", n);
     }
     printf("\n");
@@ -30,7 +30,7 @@ int main()
 
     printf("i16: %lu bits\n", 8 * sizeof(int16_t));
     for (int i = 0; i < 5000; i++) {
-        int16_t n = rand_gpu_i16(rng);
+        int16_t n = rand_gpu_u16(rng);
         printf("%d ", n);
     }
     printf("\n");
@@ -44,7 +44,7 @@ int main()
 
     printf("i32: %lu bits\n", 8 * sizeof(int32_t));
     for (int i = 0; i < 5000; i++) {
-        int32_t n = rand_gpu_i32(rng);
+        int32_t n = rand_gpu_u32(rng);
         printf("%d ", n);
     }
     printf("\n");
@@ -58,7 +58,7 @@ int main()
 
     printf("i64: %lu bits\n", 8 * sizeof(int64_t));
     for (int i = 0; i < 5000; i++) {
-        int64_t n = rand_gpu_i64(rng);
+        int64_t n = rand_gpu_u64(rng);
         printf("%ld ", n);
     }
     printf("\n");
