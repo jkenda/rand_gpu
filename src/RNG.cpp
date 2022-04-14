@@ -1,7 +1,7 @@
 /**
- * @file RandGPU.cpp
+ * @file RNG.cpp
  * @author Jakob Kenda (kenda.jakob@gmail.com)
- * @brief Source file for RandGPU/rand_gpu C/C++ library
+ * @brief Source file for RNG/rand_gpu C/C++ library
  * @version 0.2
  * @date 2022-04-12
  * 
@@ -9,7 +9,7 @@
  * 
  */
 
-#include "RandGPU.hpp"
+#include "RNG.hpp"
 #include "rand_gpu.h"
 
 #include <thread>

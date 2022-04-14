@@ -1,5 +1,5 @@
 /**
- * @file RandGPU.hpp
+ * @file RNG.hpp
  * @author Jakob Kenda (kenda.jakob@domain.com)
  * @brief 
  * @version 0.2
@@ -27,7 +27,7 @@ namespace rand_gpu
     {
     public:
         /**
-         * @brief Construct a new RandGPU object
+         * @brief Construct a new RNG object
          * 
          * @param multi buffer size multiplier
          */

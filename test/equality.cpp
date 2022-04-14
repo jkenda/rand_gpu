@@ -1,5 +1,5 @@
 /**
- * @file test.c
+ * @file equality.c
  * @author Jakob Kenda (kenda.jakob@gmail.com)
  * @brief Tests whether the random number buffers change over time
  *        Result should be 0.0 for a <=> b, a <=> c and b <=> c
@@ -12,7 +12,7 @@
 
 #include <cstdio>
 #include <vector>
-#include "../src/RandGPU.hpp"
+#include "../src/RNG.hpp"
 
 using std::vector;
 

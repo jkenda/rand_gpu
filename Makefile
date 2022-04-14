@@ -13,9 +13,9 @@ all: print pi_simple pi fastest_multiplier equality
 lib/librand_gpu.so: lib bin/test_kernel install
 lib/librand_gpu.dll: lib bin/test_kernel dll
 
-lib: RandGPU.o
+lib: RNG.o
 	@mkdir -p lib
-	$(CXXC) $(CXXFLAGS) -shared -o lib/librand_gpu.so RandGPU.o -lOpenCL -lpthread
+	$(CXXC) $(CXXFLAGS) -shared -o lib/librand_gpu.so RNG.o -lOpenCL -lpthread
 
 install: lib
 	@mkdir -p $(INSTALL_PATH)
@@ -33,8 +33,8 @@ bin/test_kernel: tools/test_kernel.cpp kernel.hpp
 	$(CXXC) $(CXXFLAGS) -o bin/test_kernel tools/test_kernel.cpp -lOpenCL
 	@LD_LIBRARY_PATH=lib bin/test_kernel
 
-RandGPU.o: src/RandGPU.cpp src/RandGPU.hpp kernel.hpp
-	$(CXXC) $(CXXFLAGS) -c src/RandGPU.cpp -fPIC
+RNG.o: src/RNG.cpp src/RNG.hpp kernel.hpp
+	$(CXXC) $(CXXFLAGS) -c src/RNG.cpp -fPIC
 
 kernel.hpp: src/kernels/server.cl
 	tools/convert_kernel.py src/kernels/server.cl
