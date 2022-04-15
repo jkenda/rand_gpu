@@ -30,9 +30,6 @@
 #define TYCHE_I_DOUBLE_MULTI 5.4210108624275221700372640e-20
 
 /*
-FIXME: /usr/bin/ld: /tmp/cczIhVEY.o: undefined reference to symbol 'clReleaseCommandQueue@@OPENCL_1.0'
-       when linking to C++ file
-
 TODO: circular buffer on graphics card, offset read
 */
 
@@ -56,6 +53,7 @@ namespace rand_gpu
     atomic<size_t> mem_all = 0;
     bool initialized = false;
 
+    mt19937_64 generator;
     cl::Context context;
     cl::Device  device;
     cl::Program program;
@@ -114,6 +112,10 @@ namespace rand_gpu
                 }
             }
 
+            // initialize random number generator
+            random_device rd;
+            generator = mt19937_64(rd());
+
             size_t preferred_multiple;
             cl::Kernel kernel = cl::Kernel(program, "generate");
             kernel.getWorkGroupInfo(device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, &preferred_multiple);
@@ -131,6 +133,10 @@ namespace rand_gpu
 
             initialized = true;
         }
+
+        // generate seed
+        cl_ulong seed = generator();
+
         constructor_lock.unlock();
 
         // increase total memory usage counter
@@ -146,24 +152,14 @@ namespace rand_gpu
         buffer[0].data.resize(buf_size);
         buffer[1].data.resize(buf_size);
 
-        // generate seeds
-        vector<cl_ulong> seeds(global_size[0]);
-        random_device rd;
-        mt19937_64 generator(rd());
-        for (cl_ulong &seed : seeds)
-        {
-            seed = generator();
-        }
-
         // create buffers
         state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, global_size[0] * TYCHE_I_STATE_SIZE);
         random_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size);
 
         // initialize RNG
-        cl::Buffer seed_buffer(context, seeds.begin(), seeds.end(), false);
         cl::Kernel k_init = cl::Kernel(program, "init");
         k_init.setArg(0, state_buf);
-        k_init.setArg(1, seed_buffer);
+        k_init.setArg(1, sizeof(cl_ulong), &seed);
         queue->enqueueNDRangeKernel(k_init, 0, global_size);
 
         // create kernel
@@ -230,6 +226,11 @@ namespace rand_gpu
     size_t RNG_private::buffer_size()
     {
         return buf_size;
+    }
+
+    size_t mem_usage()
+    {
+        return mem_all;
     }
 
     RNG_private::~RNG_private()

@@ -33,7 +33,7 @@ namespace rand_gpu
          * 
          * @tparam T type of random number to be returned - only \a uint<N>_t implemented
          */
-        template <typename T = uint64_t>
+        template <typename T = unsigned long>
         T get_random();
 
         /**
@@ -52,4 +52,6 @@ namespace rand_gpu
     private:
         std::unique_ptr<RNG_private> d_ptr_;
     };
+
+    size_t memory_usage();
 }

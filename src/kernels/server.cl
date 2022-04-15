@@ -34,10 +34,10 @@ void tyche_i_seed(__global tyche_i_state* state, ulong seed){
 }
 
 
-__kernel void init(__global tyche_i_state *states, __global ulong *seed)
+__kernel void init(__global tyche_i_state *states, ulong seed)
 {
     const uint gid = get_global_id(0);
-    tyche_i_seed(&states[gid], seed[gid]);
+    tyche_i_seed(&states[gid], seed);
 }
 
 __kernel void generate(__global tyche_i_state *states, __global ulong *res)

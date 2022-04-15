@@ -56,4 +56,5 @@ namespace rand_gpu
         size_t buf_offset;
     };
 
+    size_t mem_usage();
 }

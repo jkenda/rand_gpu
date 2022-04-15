@@ -33,9 +33,18 @@ namespace rand_gpu
     template short     RNG::get_random<short>();
     template char      RNG::get_random<char>();
 
+    template float       RNG::get_random<float>();
+    template double      RNG::get_random<double>();
+    template long double RNG::get_random<long double>();
+
     size_t RNG::buffer_size()
     {
         return d_ptr_->buffer_size();
+    }
+
+    size_t memory_usage()
+    {
+        return rand_gpu::mem_usage();
     }
 
 } // namespace rand_gpu
