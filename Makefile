@@ -10,19 +10,19 @@ default: lib/librand_gpu.so
 all: print pi_simple pi fastest_multiplier equality
 lib/librand_gpu.so: lib bin/test_kernel install
 
-lib: RNG.o
+lib: RNG.o RNG_private.o RNG_private.o
 	@mkdir -p lib
 	$(CXXC) $(CXXFLAGS) -shared -o lib/librand_gpu.so RNG.o RNG_private.o -lOpenCL -lpthread
 
-install: lib
+install:
 	@mkdir -p ~/.local/lib/
 	cp lib/librand_gpu.so ~/.local/lib/
 
-run: pi
-	LD_LIBRARY_PATH=~/.local/lib bin/pi
+run: pi_parallel
+	LD_LIBRARY_PATH=~/.local/lib bin/pi_parallel
 
-run_slurm:
-	srun $(SLURM_ARGS) bin/pi | tee output &
+run_slurm: pi_parallel
+	LD_LIBRARY_PATH=~/.local/lib srun $(SLURM_ARGS) bin/pi_parallel | tee output &
 
 
 bin/test_kernel: tools/test_kernel.cpp kernel.hpp
@@ -30,8 +30,11 @@ bin/test_kernel: tools/test_kernel.cpp kernel.hpp
 	$(CXXC) $(CXXFLAGS) -o bin/test_kernel tools/test_kernel.cpp -lOpenCL
 	@LD_LIBRARY_PATH=lib bin/test_kernel
 
-RNG.o: src/RNG.hpp src/RNG_private.hpp src/RNG.cpp src/RNG_private.cpp kernel.hpp
-	$(CXXC) $(CXXFLAGS) -c src/RNG.cpp src/RNG_private.cpp -fPIC
+RNG.o: src/RNG.hpp src/RNG.cpp kernel.hpp
+	$(CXXC) $(CXXFLAGS) -c src/RNG.cpp -fPIC
+
+RNG_private.o: src/RNG_private.hpp src/RNG_private.cpp kernel.hpp
+	$(CXXC) $(CXXFLAGS) -c src/RNG_private.cpp -fPIC
 
 kernel.hpp: src/kernels/server.cl
 	tools/convert_kernel.py src/kernels/server.cl
