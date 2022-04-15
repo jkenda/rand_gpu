@@ -11,18 +11,12 @@
 
 #pragma once
 
-#include <vector>
-#include <mutex>
-#include <condition_variable>
-#include <array>
-
-#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
-#define CL_TARGET_OPENCL_VERSION 120
-#define __CL_ENABLE_EXCEPTIONS
-#include "../include/cl.hpp"
+#include <memory>
 
 namespace rand_gpu
 {
+    class RNG_private;
+
     class RNG
     {
     public:
@@ -32,7 +26,6 @@ namespace rand_gpu
          * @param multi buffer size multiplier
          */
         RNG(size_t multi);
-
         ~RNG();
 
         /**
@@ -50,31 +43,13 @@ namespace rand_gpu
          */
         size_t buffer_size();
 
+        // deleted move and copy constructors and assignment operators
+        RNG(RNG&) = delete;
+        RNG(RNG&&) = delete;
+        RNG& operator=(RNG&) = delete;
+        RNG& operator=(RNG&&) = delete;
+
     private:
-        struct Buffer
-        {
-            std::vector<uint8_t> data;
-            cl::Event ready_event;
-            bool ready;
-        };
-
-        static void set_flag(cl_event e, cl_int status, void *data);
-
-        std::mutex buffer_ready_lock;
-        std::condition_variable buffer_ready_cond;
-
-        cl::CommandQueue queue;
-
-        cl::Buffer  state_buf;
-        cl::Buffer  random_buf;
-        cl::Kernel  k_generate;
-
-        std::array<Buffer, 2> buffer;
-        size_t buffer_max_size;
-        uint_fast8_t active_buf;
-        uint_fast8_t waiting_buf;
-
-        size_t buf_offset;
+        std::unique_ptr<RNG_private> d_ptr_;
     };
-
-} // namespace rand_gpu
+}

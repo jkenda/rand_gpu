@@ -18,12 +18,12 @@ using std::vector;
 
 int main()
 {
-    rand_gpu::RNG rng(4);
+    rand_gpu::RNG rng(32);
 
     size_t bufsiz = rng.buffer_size();
-    vector<unsigned long> a(bufsiz);
-    vector<unsigned long> b(bufsiz);
-    vector<unsigned long> c(bufsiz);
+    vector<unsigned long> a;
+    vector<unsigned long> b;
+    vector<unsigned long> c;
 
     for (size_t i = 0; i < bufsiz; i++) {
         a.emplace_back(rng.get_random<unsigned long>());

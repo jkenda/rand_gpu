@@ -12,7 +12,7 @@ lib/librand_gpu.so: lib bin/test_kernel install
 
 lib: RNG.o
 	@mkdir -p lib
-	$(CXXC) $(CXXFLAGS) -shared -o lib/librand_gpu.so RNG.o -lOpenCL -lpthread
+	$(CXXC) $(CXXFLAGS) -shared -o lib/librand_gpu.so RNG.o RNG_private.o -lOpenCL -lpthread
 
 install: lib
 	@mkdir -p ~/.local/lib/
@@ -30,8 +30,8 @@ bin/test_kernel: tools/test_kernel.cpp kernel.hpp
 	$(CXXC) $(CXXFLAGS) -o bin/test_kernel tools/test_kernel.cpp -lOpenCL
 	@LD_LIBRARY_PATH=lib bin/test_kernel
 
-RNG.o: src/RNG.cpp src/RNG.hpp kernel.hpp
-	$(CXXC) $(CXXFLAGS) -c src/RNG.cpp -fPIC
+RNG.o: src/RNG.hpp src/RNG_private.hpp src/RNG.cpp src/RNG_private.cpp kernel.hpp
+	$(CXXC) $(CXXFLAGS) -c src/RNG.cpp src/RNG_private.cpp -fPIC
 
 kernel.hpp: src/kernels/server.cl
 	tools/convert_kernel.py src/kernels/server.cl
