@@ -70,9 +70,11 @@ namespace rand_gpu
         cl::Kernel  k_generate;
 
         std::array<Buffer, 2> buffer;
+        size_t buffer_max_size;
+        uint_fast8_t active_buf;
+        uint_fast8_t waiting_buf;
 
-        size_t active;
-        size_t buffer_i;
+        size_t buf_offset;
     };
 
 } // namespace rand_gpu

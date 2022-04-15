@@ -8,7 +8,7 @@
 #include "../src/rand_gpu.h"
 
 #define NTHREADS 8
-#define ITER (2048U * 1024U)
+#define ITER (1000000000UL)
 
 float abs_f(float a)
 {
@@ -32,7 +32,7 @@ float pi_std()
         uint32_t thread_num = omp_get_thread_num();
         uint_fast64_t cnt_l = 0;
 
-        for (uint32_t i = 0; i < ITER; i++) {
+        for (uint_fast64_t i = 0; i < ITER; i++) {
             float a = rand_r(&states[thread_num]) / (float) RAND_MAX;
             float b = rand_r(&states[thread_num]) / (float) RAND_MAX;
             if (sqrt(a*a + b*b) < 1.0f)
@@ -52,10 +52,10 @@ float pi_lib()
 
     #pragma omp parallel num_threads(NTHREADS)
     {
-        rand_gpu_rng *rng = rand_gpu_new(2);
+        rand_gpu_rng *rng = rand_gpu_new(16);
         uint_fast64_t cnt_l = 0;
 
-        for (uint32_t i = 0; i < ITER; i++) {
+        for (uint_fast64_t i = 0; i < ITER; i++) {
             float a = rand_gpu_float(rng);
             float b = rand_gpu_float(rng);
             if (sqrt(a*a + b*b) < 1.0f)
@@ -78,16 +78,16 @@ int main()
     printf("real pi: %lf\n", M_PI);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    float pi_s = pi_std();
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_std = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
-
-    printf("std pi: %f +/- %f, %f s\n", pi_s, abs_f(M_PI - pi_s), time_std);
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     float pi_l = pi_lib();
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_lib = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
     printf("lib pi: %f +/- %f, %f s\n", pi_l, abs_f(M_PI - pi_l), time_lib);
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    float pi_s = pi_std();
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    time_std = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
+    printf("std pi: %f +/- %f, %f s\n", pi_s, abs_f(M_PI - pi_s), time_std);
+
     printf("speedup = %f\n", time_std / time_lib);
 }

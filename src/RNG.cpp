@@ -15,10 +15,9 @@
 #include <thread>
 #include <cstdio>
 #include <random>
-#include <fstream>
-#include <sstream>
-#include <chrono>
+#include <iostream>
 #include <cstring>
+#include <atomic>
 #include "../kernel.hpp"
 
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
@@ -43,176 +42,201 @@ using namespace std;
 
 namespace rand_gpu
 {
-    static mutex constructor_lock;
-    static mutex init_lock;
-    static mutex queue_lock;
+    struct waiting_ref
+    {
+        bool& ready;
+        mutex& ready_lock;
+        condition_variable& ready_cond;
+    };
 
-    static bool initialized = false;
-    static size_t mem_all = 0L;
+    mutex constructor_lock;
+    mutex init_lock;
+    mutex queue_lock;
 
-    static cl::Context context;
-    static cl::Device  device;
-    static cl::Program program;
+    vector<cl::Device> devices;
+    atomic<size_t> device_i = 0;
+    atomic<size_t> mem_all = 0;
+    bool initialized = false;
 
-    static size_t nthreads;
-    static size_t wg_size;
-    static size_t buf_size;
-    static size_t buf_limit;
+    cl::Context context;
+    cl::Device  device;
+    cl::Program program;
+
+    cl::NDRange global_size;
+    cl::NDRange local_size;
+    size_t buf_size;
+    size_t buf_limit;
 
 
     RNG::RNG(size_t multi)
     :
-        active(0), buffer_i(sizeof(uint32_t))
+        active_buf(0), buf_offset(sizeof(uint32_t))
     {
         constructor_lock.lock();
 
-        if (!initialized) {
+        if (!initialized)
+        {
             cl::Platform platform;
-            vector<cl::Device> devices;
 
             // get platforms and devices
-            cl::Platform::get(&platform);
-            platform.getDevices(CL_DEVICE_TYPE_ALL, &devices);
-            device = devices.at(0);
-
-            // get device info
-            uint32_t max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
-            uint32_t max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
-            wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
-            nthreads = multi * max_cu * max_wg_size;
-            buf_size = nthreads * sizeof(cl_ulong);
-            buf_limit = buf_size - sizeof(long double);
+            try
+            {
+                cl::Platform::get(&platform);
+                platform.getDevices(CL_DEVICE_TYPE_GPU, &devices);
+                device = devices.at(device_i);
+            }
+            catch(const cl::Error& err)
+            {
+                cerr << "No openCL devices found!\n";
+                throw err;
+            }
 
             // create context
-            context = cl::Context({ device });
+            context = cl::Context(devices);
 
             // build program
             cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE, strlen(KERNEL_SOURCE)));
             program = cl::Program(context, sources);
 
-            try {
-                program.build({ device }, "");
+            try
+            {
+                program.build(devices, "");
             }
-            catch (cl::Error const&) {
-                std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-                fputs(buildlog.c_str(), stderr);
-                throw cl::Error(CL_BUILD_PROGRAM_FAILURE);
+            catch (const cl::Error& err)
+            {
+                // print buildlog if build failed
+                for (const cl::Device& dev : devices) 
+                {
+                    if (program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev) != CL_SUCCESS)
+                    {
+                        string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev);
+                        cerr << buildlog << '\n';
+                        throw err;
+                    }
+                }
             }
+
+            size_t preferred_multiple;
+            cl::Kernel kernel = cl::Kernel(program, "generate");
+            kernel.getWorkGroupInfo(device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, &preferred_multiple);
+
+            // get device info
+            uint32_t max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
+            size_t mem_size = device.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>();
+            size_t max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
+
+            buffer_max_size = mem_size - mem_size % sizeof(cl_ulong);
+            local_size = cl::NDRange(max_wg_size);
+            global_size = cl::NDRange(multi * max_cu * local_size[0]);
+            buf_size = global_size[0] * sizeof(cl_ulong);
+            buf_limit = buf_size - sizeof(long double);
 
             initialized = true;
         }
-
-        mem_all += buf_size;
-
         constructor_lock.unlock();
 
-        cl::Event e;
+        // increase total memory usage counter
+        mem_all += 2 * buf_size;
+
+        device = devices.at(device_i);
+        device_i = (device_i + 1) % devices.size();
 
         // create command queue
         queue = cl::CommandQueue(context, device);
 
+        // resize host buffers
+        buffer[0].data.resize(buf_size);
+        buffer[1].data.resize(buf_size);
+
         // generate seeds
-        vector<cl_ulong> seeds(nthreads);
+        vector<cl_ulong> seeds(global_size[0]);
         random_device rd;
         mt19937_64 generator(rd());
-        for (cl_ulong &seed : seeds) {
+        for (cl_ulong &seed : seeds)
+        {
             seed = generator();
         }
-        cl::Buffer seed_buffer(context, seeds.begin(), seeds.end(), true);
-        state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, nthreads * TYCHE_I_STATE_SIZE);
+
+        // create buffers
+        state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, global_size[0] * TYCHE_I_STATE_SIZE);
+        random_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size);
 
         // initialize RNG
+        cl::Buffer seed_buffer(context, seeds.begin(), seeds.end(), false);
         cl::Kernel k_init = cl::Kernel(program, "init");
         k_init.setArg(0, state_buf);
         k_init.setArg(1, seed_buffer);
-        queue.enqueueNDRangeKernel(k_init, cl::NDRange(0), cl::NDRange(nthreads), cl::NullRange, NULL, &e);
-        e.wait();
+        queue.enqueueNDRangeKernel(k_init, 0, global_size);
 
         // create kernel
         k_generate = cl::Kernel(program, "generate");
 
-        // resize buffers
-        buffer[0].data.resize(buf_size);
-        buffer[1].data.resize(buf_size);
-
-        // create buffer
-        random_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size, NULL);
-
         // fill both buffers
         k_generate.setArg(0, state_buf);
         k_generate.setArg(1, random_buf);
-        queue.enqueueNDRangeKernel(k_generate, 0, cl::NDRange(nthreads), cl::NullRange, NULL, &e);
-        e.wait();
+        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
         queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size, buffer[0].data.data());
-        queue.enqueueNDRangeKernel(k_generate, 0, cl::NDRange(nthreads), cl::NullRange, NULL, &e);
-        e.wait();
+        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
         queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size, buffer[1].data.data());
         buffer[0].ready = true;
         buffer[1].ready = true;
 
         // generate future numbers
-        queue.enqueueNDRangeKernel(k_generate, 0, cl::NDRange(nthreads), cl::NullRange);
+        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
     }
 
     void RNG::set_flag(cl_event e, cl_int status, void *data)
     {
-        RNG *inst = static_cast<RNG *>(data);
-        lock_guard<mutex> lock(inst->buffer_ready_lock);
-        inst->buffer[!inst->active].ready = true;
-        inst->buffer_ready_cond.notify_one();
+        waiting_ref *const ptr = (waiting_ref *) data;
+        lock_guard<mutex> lock(ptr->ready_lock);
+        ptr->ready = true;
+        ptr->ready_cond.notify_one();
+        delete ptr;
     }
 
     template <typename T>
     T RNG::get_random()
     {
-        Buffer &active_buffer = buffer[active];
+        Buffer &active_buffer = buffer[active_buf];
 
-        if (buffer_i == 0) {
-            // check if buffer is ready
+        // just switched buffers
+        if (buf_offset == 0)
+        {
             unique_lock<mutex> lock(buffer_ready_lock);
-            active = !active;
             buffer_ready_cond.wait(lock, [&] { return active_buffer.ready; });
-            active = !active;
         }
 
+        // retrieve number from buffer
         T num;
-        memcpy(&num, &active_buffer.data[buffer_i], sizeof(T));
-        buffer_i += sizeof(T);
+        memcpy(&num, &active_buffer.data[buf_offset], sizeof(T));
+        buf_offset += sizeof(T);
 
         // out of numbers in current buffer
-        if (buffer_i >= buf_limit) {
+        if (buf_offset >= buf_limit)
+        {
             active_buffer.ready = false;
 
-            /*
-            OpenCL API calls that queue commands to a command-queue or change the state of OpenCL objects 
-            such as command-queue objects, memory objects, program and kernel objects are not thread-safe.
-            */
-
-            // enqueue read data into the empty buffer, generate future numbers
-            lock_guard<mutex> lock(queue_lock);
-            queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size, active_buffer.data.data(), NULL, &active_buffer.ready_event);
-            queue.enqueueNDRangeKernel(k_generate, 0, cl::NDRange(nthreads), cl::NullRange);
-            active_buffer.ready_event.setCallback(CL_COMPLETE, set_flag, this);
+            // enqueue reading data, generating future numbers
+            queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size, active_buffer.data.data(), nullptr, &active_buffer.ready_event);
+            queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+            active_buffer.ready_event.setCallback(CL_COMPLETE, set_flag, 
+                    new waiting_ref{ active_buffer.ready, buffer_ready_lock, buffer_ready_cond });
 
             // switch active buffer
-            active = !active;
-            buffer_i = 0;
+            active_buf = 1^active_buf;
+            buf_offset = 0;
         }
         return num;
     }
 
     size_t RNG::buffer_size()
     {
-        return 2 * buf_size;
+        return buf_size;
     }
 
     RNG::~RNG()
     {
-        constructor_lock.lock();
-        mem_all -= buf_size;
-        constructor_lock.unlock();
-        queue.flush();
-        queue.finish();
+        mem_all -= 2 * buf_size;
     }
 
     /*
@@ -247,14 +271,15 @@ namespace rand_gpu
     instantiate templates for all primitives
     */
 
-    template uint64_t RNG::get_random<uint64_t>();
-    template uint32_t RNG::get_random<uint32_t>();
-    template uint16_t RNG::get_random<uint16_t>();
-    template uint8_t  RNG::get_random<uint8_t>();
-    template int64_t  RNG::get_random<int64_t>();
-    template int32_t  RNG::get_random<int32_t>();
-    template int16_t  RNG::get_random<int16_t>();
-    template int8_t   RNG::get_random<int8_t>();
+    template unsigned long long RNG::get_random<unsigned long long>();
+    template unsigned int       RNG::get_random<unsigned int>();
+    template unsigned short     RNG::get_random<unsigned short>();
+    template unsigned char      RNG::get_random<unsigned char>();
+    template long long RNG::get_random<long long>();
+    template long      RNG::get_random<long>();
+    template int       RNG::get_random<int>();
+    template short     RNG::get_random<short>();
+    template char      RNG::get_random<char>();
 
 } // namespace rand_gpu
 
@@ -267,24 +292,24 @@ extern "C" {
 
 rand_gpu_rng *rand_gpu_new(uint32_t multi)
 {
-    return static_cast<rand_gpu_rng *>(new rand_gpu::RNG(multi));
+    return (rand_gpu_rng *) new rand_gpu::RNG(multi);
 }
 
 void rand_gpu_delete(rand_gpu_rng *rng)
 {
-    delete static_cast<rand_gpu::RNG *>(rng);
+    delete (rand_gpu::RNG *) rng;
 }
 
-size_t rand_gpu_buffer_size(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->buffer_size(); }
+size_t rand_gpu_buffer_size(rand_gpu_rng *rng) { return ((rand_gpu::RNG *) rng)->buffer_size(); }
 size_t rand_gpu_memory() { return rand_gpu::mem_all; }
 
-uint64_t rand_gpu_u64(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->get_random<uint64_t>(); }
-uint32_t rand_gpu_u32(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->get_random<uint32_t>(); }
-uint16_t rand_gpu_u16(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->get_random<uint16_t>(); }
-uint8_t  rand_gpu_u8(rand_gpu_rng *rng)  { return static_cast<rand_gpu::RNG *>(rng)->get_random<uint8_t>();  }
+uint64_t rand_gpu_u64(rand_gpu_rng *rng) { return ((rand_gpu::RNG *) rng)->get_random<uint64_t>(); }
+uint32_t rand_gpu_u32(rand_gpu_rng *rng) { return ((rand_gpu::RNG *) rng)->get_random<uint32_t>(); }
+uint16_t rand_gpu_u16(rand_gpu_rng *rng) { return ((rand_gpu::RNG *) rng)->get_random<uint16_t>(); }
+uint8_t  rand_gpu_u8(rand_gpu_rng *rng)  { return ((rand_gpu::RNG *) rng)->get_random<uint8_t>();  }
 
-float       rand_gpu_float(rand_gpu_rng *rng)       { return static_cast<rand_gpu::RNG *>(rng)->get_random<float>();       }
-double      rand_gpu_double(rand_gpu_rng *rng)      { return static_cast<rand_gpu::RNG *>(rng)->get_random<double>();      }
-long double rand_gpu_long_double(rand_gpu_rng *rng) { return static_cast<rand_gpu::RNG *>(rng)->get_random<long double>(); }
+float       rand_gpu_float(rand_gpu_rng *rng)       { return ((rand_gpu::RNG *) rng)->get_random<float>();       }
+double      rand_gpu_double(rand_gpu_rng *rng)      { return ((rand_gpu::RNG *) rng)->get_random<double>();      }
+long double rand_gpu_long_double(rand_gpu_rng *rng) { return ((rand_gpu::RNG *) rng)->get_random<long double>(); }
 
 }

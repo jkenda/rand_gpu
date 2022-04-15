@@ -1,8 +1,7 @@
 CC= gcc
 CXXC= g++
-CFLAGS= -O3 -g -Wall -Wpedantic
-CXXFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
-INSTALL_PATH= $(HOME)/.local/lib/
+CFLAGS= -O2 -g -Wall -Wpedantic
+CXXFLAGS= --std=c++17 -O2 -g -Wall -Wpedantic
 
 SLURM_ARGS= --reservation=fri -c2 -G2
 
@@ -16,8 +15,8 @@ lib: RNG.o
 	$(CXXC) $(CXXFLAGS) -shared -o lib/librand_gpu.so RNG.o -lOpenCL -lpthread
 
 install: lib
-	@mkdir -p $(INSTALL_PATH)
-	cp lib/librand_gpu.so $(INSTALL_PATH)
+	@mkdir -p ~/.local/lib/
+	cp lib/librand_gpu.so ~/.local/lib/
 
 run: pi
 	LD_LIBRARY_PATH=~/.local/lib bin/pi

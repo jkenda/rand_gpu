@@ -30,13 +30,17 @@ int main()
     cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE, strlen(KERNEL_SOURCE)));
     cl::Program program = cl::Program(context, sources);
 
-    try {
+    try
+    {
         program.build(devices, "");
     }
-    catch (cl::Error const&) {
+    catch (const cl::Error& err)
+    {
         std::string name     = device.getInfo<CL_DEVICE_NAME>();
         std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-        fputs(buildlog.c_str(), stderr);
+        cerr << buildlog << '\n';
+        cerr << "Syntax check failed!" << '\n';
+        throw err;
     }
-    cout << "Syntax check succeeded." << endl;
+    cout << "Syntax check succeeded." << '\n';
 }
