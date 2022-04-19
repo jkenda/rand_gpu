@@ -2,7 +2,7 @@
  * @file rand_gpu.h
  * @author Jakob Kenda (kenda.jakob@gmail.com)
  * @brief 
- * @version 0.2
+ * @version 0.3
  * @date 2022-04-07
  * 
  * @copyright Copyright (c) 2022
@@ -17,7 +17,6 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
 #include <stddef.h>
 
 
@@ -27,7 +26,7 @@ typedef void rand_gpu_rng;
  * @brief Initializes a new random number generator.
  * @return New RNG
  */
-rand_gpu_rng *rand_gpu_new(uint32_t multi);
+rand_gpu_rng *rand_gpu_new(unsigned int multi);
 
 /**
  * @brief Deletes the RNG.
@@ -52,25 +51,25 @@ size_t rand_gpu_memory();
  * @brief Returns next random number.
  * @param rng RNG to retrieve the random number from
  */
-uint64_t rand_gpu_u64(rand_gpu_rng *rng);
+unsigned long rand_gpu_u64(rand_gpu_rng *rng);
 
 /**
  * @brief Returns next random number.
  * @param rng RNG to retrieve the random number from
  */
-uint32_t rand_gpu_u32(rand_gpu_rng *rng);
+unsigned int rand_gpu_u32(rand_gpu_rng *rng);
 
 /**
  * @brief Returns next random number.
  * @param rng RNG to retrieve the random number from
  */
-uint16_t rand_gpu_u16(rand_gpu_rng *rng);
+unsigned short rand_gpu_u16(rand_gpu_rng *rng);
 
 /**
  * @brief Returns next random number.
  * @param rng RNG to retrieve the random number from
  */
-uint8_t rand_gpu_u8(rand_gpu_rng *rng);
+unsigned char rand_gpu_u8(rand_gpu_rng *rng);
 
 
 /**
