@@ -10,9 +10,9 @@ default: lib/librand_gpu.so
 all: print pi_simple pi fastest_multiplier equality
 lib/librand_gpu.so: lib bin/test_kernel install
 
-lib: RNG.o RNG_private.o
+lib: RNG.o
 	@mkdir -p lib
-	$(CPPC) $(CPPFLAGS) -shared -o lib/librand_gpu.so RNG.o RNG_private.o -lOpenCL -lpthread
+	$(CPPC) $(CPPFLAGS) -shared -o lib/librand_gpu.so RNG.o -lOpenCL -lpthread
 
 install:
 	@mkdir -p ~/.local/lib/
@@ -32,9 +32,6 @@ bin/test_kernel: tools/test_kernel.cpp kernel.hpp
 
 RNG.o: src/RNG.hpp src/RNG.cpp kernel.hpp
 	$(CPPC) $(CPPFLAGS) -c src/RNG.cpp -fPIC
-
-RNG_private.o: src/RNG_private.hpp src/RNG_private.cpp kernel.hpp
-	$(CPPC) $(CPPFLAGS) -c src/RNG_private.cpp -fPIC
 
 kernel.hpp: src/kernels/server.cl
 	tools/convert_kernel.py src/kernels/server.cl
