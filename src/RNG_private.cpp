@@ -211,13 +211,10 @@ namespace rand_gpu
             active_buffer.ready = false;
 
             // enqueue reading data, generating future numbers
-            {
-                lock_guard<mutex> lock(queue_lock);
-                queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size, active_buffer.data.data(), nullptr, &active_buffer.ready_event);
-                queue.enqueueNDRangeKernel(k_generate, 0, global_size);
-                active_buffer.ready_event.setCallback(CL_COMPLETE, set_flag, 
-                        new waiting_ref{ active_buffer.ready, buffer_ready_lock, buffer_ready_cond });
-            }
+            queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size, active_buffer.data.data(), nullptr, &active_buffer.ready_event);
+            queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+            active_buffer.ready_event.setCallback(CL_COMPLETE, set_flag, 
+                    new waiting_ref{ active_buffer.ready, buffer_ready_lock, buffer_ready_cond });
 
             // switch active buffer
             active_buf = 1^active_buf;
