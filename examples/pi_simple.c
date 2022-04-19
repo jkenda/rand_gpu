@@ -9,7 +9,7 @@
 
 #define SAMPLES (100000000UL)
 
-double pi_lib;
+float pi_lib;
 float time_lib;
 struct timespec start, end;
 
@@ -22,7 +22,7 @@ float abs_f(float a)
 
 int main(int argc, char **argv)
 {
-    size_t times = 16;
+    size_t times = 2;
     if (argc == 2) {
         sscanf(argv[1], "%lu", &times);
     }
@@ -45,5 +45,5 @@ int main(int argc, char **argv)
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
     time_lib = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
-    printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, abs_f(pi_lib - M_PI), time_lib);
+    printf("lib pi ≃ %f (+-%f), %f s\n", pi_lib, abs_f(pi_lib - M_PI), time_lib);
 }

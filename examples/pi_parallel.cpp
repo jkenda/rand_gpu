@@ -55,8 +55,6 @@ float pi_lib(size_t multi)
     {
         rand_gpu::RNG rng(multi);
         #pragma omp barrier
-        #pragma omp single
-        cout << rand_gpu::memory_usage() << '\n';
 
         uint_fast64_t cnt_l = 0;
 
@@ -76,7 +74,7 @@ float pi_lib(size_t multi)
 
 int main(int argc, char **argv)
 {
-    size_t multi = 16;
+    size_t multi = 2;
     if (argc == 2) {
         sscanf(argv[1], "%lu", &multi);
     }
