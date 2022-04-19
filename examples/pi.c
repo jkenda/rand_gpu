@@ -28,11 +28,11 @@ int main(int argc, char **argv)
         sscanf(argv[1], "%lu", &times);
     }
     
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
     rand_gpu_rng *rng = rand_gpu_new(times);
 
     long cnt = 0;
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
         float a = rand_gpu_float(rng);
@@ -50,10 +50,10 @@ int main(int argc, char **argv)
     time_lib = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
     printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, abs_f(pi_lib - M_PI), time_lib);
 
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
     srand(time(NULL));
     cnt = 0;
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
         float a = (float) rand() / RAND_MAX;
