@@ -146,7 +146,7 @@ namespace rand_gpu
         device_i = (device_i + 1) % devices.size();
 
         // create command queue
-        queue = make_unique<cl::CommandQueue>(context, device);
+        queue = cl::CommandQueue(context, device);
 
         // resize host buffers
         buffer[0].data.resize(buf_size);
@@ -160,7 +160,7 @@ namespace rand_gpu
         cl::Kernel k_init = cl::Kernel(program, "init");
         k_init.setArg(0, state_buf);
         k_init.setArg(1, sizeof(cl_ulong), &seed);
-        queue->enqueueNDRangeKernel(k_init, 0, global_size);
+        queue.enqueueNDRangeKernel(k_init, 0, global_size);
 
         // create kernel
         k_generate = cl::Kernel(program, "generate");
@@ -168,15 +168,15 @@ namespace rand_gpu
         // fill both buffers
         k_generate.setArg(0, state_buf);
         k_generate.setArg(1, random_buf);
-        queue->enqueueNDRangeKernel(k_generate, 0, global_size);
-        queue->enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size, buffer[0].data.data());
-        queue->enqueueNDRangeKernel(k_generate, 0, global_size);
-        queue->enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size, buffer[1].data.data());
+        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+        queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size, buffer[0].data.data());
+        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+        queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size, buffer[1].data.data());
         buffer[0].ready = true;
         buffer[1].ready = true;
 
         // generate future numbers
-        queue->enqueueNDRangeKernel(k_generate, 0, global_size);
+        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
     }
 
     void RNG_private::set_flag(cl_event e, cl_int status, void *data)
@@ -211,10 +211,13 @@ namespace rand_gpu
             active_buffer.ready = false;
 
             // enqueue reading data, generating future numbers
-            queue->enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size, active_buffer.data.data(), nullptr, &active_buffer.ready_event);
-            queue->enqueueNDRangeKernel(k_generate, 0, global_size);
-            active_buffer.ready_event.setCallback(CL_COMPLETE, set_flag, 
-                    new waiting_ref{ active_buffer.ready, buffer_ready_lock, buffer_ready_cond });
+            {
+                lock_guard<mutex> lock(queue_lock);
+                queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size, active_buffer.data.data(), nullptr, &active_buffer.ready_event);
+                queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+                active_buffer.ready_event.setCallback(CL_COMPLETE, set_flag, 
+                        new waiting_ref{ active_buffer.ready, buffer_ready_lock, buffer_ready_cond });
+            }
 
             // switch active buffer
             active_buf = 1^active_buf;
@@ -236,7 +239,6 @@ namespace rand_gpu
     RNG_private::~RNG_private()
     {
         mem_all -= 2 * buf_size;
-        queue.reset();
     }
 
     /*

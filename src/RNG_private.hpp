@@ -42,7 +42,7 @@ namespace rand_gpu
         std::mutex buffer_ready_lock;
         std::condition_variable buffer_ready_cond;
 
-        std::unique_ptr<cl::CommandQueue> queue;
+        cl::CommandQueue queue;
 
         cl::Buffer  state_buf;
         cl::Buffer  random_buf;
