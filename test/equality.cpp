@@ -3,7 +3,7 @@
  * @author Jakob Kenda (kenda.jakob@gmail.com)
  * @brief Tests whether the random number buffers change over time
  *        The result should be 0.0 for a <=> b, a <=> c and b <=> c
- * @version 0.2
+ * @version 0.3
  * @date 2022-04-09
  * 
  * @copyright Copyright (c) 2022
