@@ -71,7 +71,7 @@ class RNG_private
     cl::CommandQueue queue;
     cl::Kernel  k_generate;
     cl::Buffer  state_buf;
-    cl::Buffer  random_buf;
+    array<cl::Buffer, 2>  random_buf;
 
     array<Buffer, 2> buffer;
     size_t buffer_max_size;
@@ -173,7 +173,8 @@ public:
 
         // create buffers
         state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, global_size[0] * TYCHE_I_STATE_SIZE);
-        random_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size);
+        random_buf[0] = cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size);
+        random_buf[1] = cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size);
 
         // initialize RNG
         cl::Kernel k_init = cl::Kernel(program, "init");
@@ -186,15 +187,21 @@ public:
 
         // fill both buffers
         k_generate.setArg(0, state_buf);
-        k_generate.setArg(1, random_buf);
+
+        k_generate.setArg(1, random_buf[0]);
         queue.enqueueNDRangeKernel(k_generate, 0, global_size);
-        queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size, buffer[0].data.data());
-        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
-        queue.enqueueReadBuffer(random_buf, CL_TRUE, 0, buf_size, buffer[1].data.data());
+        queue.enqueueReadBuffer(random_buf[0], CL_TRUE, 0, buf_size, buffer[0].data.data());
         buffer[0].ready = true;
+
+        k_generate.setArg(1, random_buf[1]);
+        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+        queue.enqueueReadBuffer(random_buf[1], CL_TRUE, 0, buf_size, buffer[1].data.data());
         buffer[1].ready = true;
 
         // generate future numbers
+        k_generate.setArg(1, random_buf[0]);
+        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+        k_generate.setArg(1, random_buf[1]);
         queue.enqueueNDRangeKernel(k_generate, 0, global_size);
     }
 
@@ -227,7 +234,8 @@ public:
             active_buffer.ready = false;
 
             // enqueue reading data, generating future numbers
-            queue.enqueueReadBuffer(random_buf, CL_FALSE, 0, buf_size, active_buffer.data.data(), nullptr, &active_buffer.ready_event);
+            k_generate.setArg(1, random_buf[active_buf]);
+            queue.enqueueReadBuffer(random_buf[active_buf], CL_FALSE, 0, buf_size, active_buffer.data.data(), nullptr, &active_buffer.ready_event);
             queue.enqueueNDRangeKernel(k_generate, 0, global_size);
             active_buffer.ready_event.setCallback(CL_COMPLETE, set_flag, &active_buffer);
 
