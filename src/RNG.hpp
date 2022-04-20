@@ -38,7 +38,7 @@ namespace rand_gpu
         /**
          * @brief Returns next random number.
          * 
-         * @tparam T type of random number to be returned - only \a uint<N>_t implemented
+         * @tparam T type of random number to be returned - implemented for all primitive types
          */
         template <typename T = unsigned long>
         T get_random();

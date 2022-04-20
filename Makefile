@@ -1,7 +1,7 @@
 CC= gcc
 CPPC= g++
-CFLAGS= -O2 -g -Wall -Wpedantic
-CPPFLAGS= --std=c++17 -O2 -g -Wall -Wpedantic
+CFLAGS= -O3 -g -Wall -Wpedantic
+CPPFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
 
 SLURM_ARGS= --reservation=fri -c2 -G2
 

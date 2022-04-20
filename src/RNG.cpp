@@ -16,23 +16,22 @@
 #include <mutex>
 #include <condition_variable>
 #include <array>
-#include <memory>
 #include <random>
 #include <iostream>
 #include <cstring>
 #include <atomic>
-#include "../kernel.hpp"
 
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_TARGET_OPENCL_VERSION 120
 #define __CL_ENABLE_EXCEPTIONS
 #include "../include/cl.hpp"
+#include "../kernel.hpp"
 
 
 #define TYCHE_I_STATE_SIZE (4 * sizeof(cl_uint))
 
 /*
-TODO: circular buffer on graphics card, offset read
+TODO: queue on graphics card
 */
 
 using namespace std;
@@ -52,7 +51,7 @@ mutex init_lock;
 mutex queue_lock;
 
 vector<cl::Device> devices;
-atomic<size_t> device_i = 0;
+size_t device_i = 0;
 atomic<size_t> mem_all = 0;
 bool initialized = false;
 
@@ -86,85 +85,87 @@ public:
     :
         active_buf(0), buf_offset(sizeof(uint32_t))
     {
-        constructor_lock.lock();
-
-        if (!initialized)
+        cl_ulong seed;
         {
-            cl::Platform platform;
+            lock_guard<mutex> lock(constructor_lock);
 
-            // get platforms and devices
-            try
+            if (!initialized)
             {
-                cl::Platform::get(&platform);
-                platform.getDevices(CL_DEVICE_TYPE_GPU, &devices);
-                device = devices.at(device_i);
-            }
-            catch(const cl::Error& err)
-            {
-                cerr << "No openCL platforms/devices found!\n";
-                throw err;
-            }
+                cl::Platform platform;
 
-            // create context
-            context = cl::Context(devices);
-
-            // build program
-            cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE, strlen(KERNEL_SOURCE)));
-            program = cl::Program(context, sources);
-
-            try
-            {
-                program.build(devices, "");
-            }
-            catch (const cl::Error& err)
-            {
-                // print buildlog if build failed
-                for (const cl::Device& dev : devices) 
+                // get platforms and devices
+                try
                 {
-                    if (program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev) != CL_SUCCESS)
+                    cl::Platform::get(&platform);
+                    platform.getDevices(CL_DEVICE_TYPE_GPU, &devices);
+                    device = devices[device_i];
+                }
+                catch(const cl::Error& err)
+                {
+                    cerr << "No openCL platforms/devices found!\n";
+                    throw err;
+                }
+
+                // create context
+                context = cl::Context(devices);
+
+                // build program
+                cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE, strlen(KERNEL_SOURCE)));
+                program = cl::Program(context, sources);
+
+                try
+                {
+                    program.build(devices);
+                }
+                catch (const cl::Error& err)
+                {
+                    // print buildlog if build failed
+                    for (const cl::Device& dev : devices) 
                     {
-                        string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev);
-                        cerr << buildlog << '\n';
-                        throw err;
+                        if (program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev) != CL_SUCCESS)
+                        {
+                            string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev);
+                            cerr << buildlog << '\n';
+                            throw err;
+                        }
                     }
                 }
+
+                // initialize random number generator
+                random_device rd;
+                generator = mt19937_64(rd());
+
+                size_t preferred_multiple;
+                cl::Kernel kernel = cl::Kernel(program, "generate");
+                kernel.getWorkGroupInfo(device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, &preferred_multiple);
+
+                // get device info
+                uint32_t max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
+                size_t mem_size = device.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>();
+                size_t max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
+
+                buffer_max_size = mem_size - mem_size % sizeof(cl_ulong);
+                local_size = cl::NDRange(max_wg_size);
+                global_size = cl::NDRange(multi * max_cu * local_size[0]);
+                buf_size = global_size[0] * sizeof(cl_ulong);
+                buf_limit = buf_size - sizeof(long double);
+
+                initialized = true;
             }
 
-            // initialize random number generator
-            random_device rd;
-            generator = mt19937_64(rd());
+            // generate seed
+            seed = generator();
 
-            size_t preferred_multiple;
-            cl::Kernel kernel = cl::Kernel(program, "generate");
-            kernel.getWorkGroupInfo(device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, &preferred_multiple);
+            // distribute divices among instances
+            device = devices[device_i];
+            device_i = (device_i + 1) % devices.size();
 
-            // get device info
-            uint32_t max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
-            size_t mem_size = device.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>();
-            size_t max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
-
-            buffer_max_size = mem_size - mem_size % sizeof(cl_ulong);
-            local_size = cl::NDRange(max_wg_size);
-            global_size = cl::NDRange(multi * max_cu * local_size[0]);
-            buf_size = global_size[0] * sizeof(cl_ulong);
-            buf_limit = buf_size - sizeof(long double);
-
-            initialized = true;
+            // create command queue
+            queue = cl::CommandQueue(context, device);
         }
-
-        // generate seed
-        cl_ulong seed = generator();
-
-        constructor_lock.unlock();
 
         // increase total memory usage counter
         mem_all += 2 * buf_size;
-
-        device = devices.at(device_i);
-        device_i = (device_i + 1) % devices.size();
-
-        // create command queue
-        queue = cl::CommandQueue(context, device);
 
         // resize host buffers
         buffer[0].data.resize(buf_size);
@@ -308,10 +309,10 @@ void rand_gpu_delete(rand_gpu_rng *rng)
 size_t rand_gpu_buffer_size(rand_gpu_rng *rng) { return ((RNG_private *) rng)->buffer_size(); }
 size_t rand_gpu_memory() { return mem_all; }
 
-uint64_t rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint64_t>(); }
-uint32_t rand_gpu_u32(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint32_t>(); }
-uint16_t rand_gpu_u16(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint16_t>(); }
-uint8_t  rand_gpu_u8(rand_gpu_rng *rng)  { return ((RNG_private *) rng)->get_random<uint8_t>();  }
+unsigned long  rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint64_t>(); }
+unsigned int   rand_gpu_u32(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint32_t>(); }
+unsigned short rand_gpu_u16(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint16_t>(); }
+unsigned char  rand_gpu_u8(rand_gpu_rng *rng)  { return ((RNG_private *) rng)->get_random<uint8_t>();  }
 
 float       rand_gpu_float(rand_gpu_rng *rng)       { return ((RNG_private *) rng)->get_random<float>();       }
 double      rand_gpu_double(rand_gpu_rng *rng)      { return ((RNG_private *) rng)->get_random<double>();      }
@@ -348,6 +349,7 @@ namespace rand_gpu
     template unsigned int       RNG::get_random<unsigned int>();
     template unsigned short     RNG::get_random<unsigned short>();
     template unsigned char      RNG::get_random<unsigned char>();
+
     template long long RNG::get_random<long long>();
     template long      RNG::get_random<long>();
     template int       RNG::get_random<int>();
