@@ -5,6 +5,14 @@ CPPFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
 
 SLURM_ARGS= --reservation=fri -c2 -G2
 
+# odstrani 16- in 8-bitne funkcije
+# Arnes
+# izmeri delež generiranja proti računanju
+# kakna je razlika, koliko naklj. števil naenkrat zahtevam
+# štej "zgrešitve"
+# 2 bufferja -> krožna vrsta?
+# naredi par grafov iz meritev
+
 default: lib/librand_gpu.so
 
 all: print pi_simple pi fastest_multiplier equality

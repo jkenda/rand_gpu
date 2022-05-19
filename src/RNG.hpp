@@ -25,9 +25,10 @@ namespace rand_gpu
         /**
          * @brief Construct a new RNG object
          * 
+         * @param seed Custom seed
          * @param multi buffer size multiplier
          */
-        RNG(size_t multi = 2);
+        RNG(const size_t multi = 1, const uint64_t seed = 0);
 
         /**
          * @brief Destroy the RNG object
@@ -48,13 +49,13 @@ namespace rand_gpu
          * 
          * @return size_t 
          */
-        size_t buffer_size();
+        const size_t buffer_size() const;
 
-        // deleted move and copy constructors and assignment operators
+        // deleted copy constructor and assignment operator
         RNG(RNG&) = delete;
-        RNG(RNG&&) = delete;
         RNG& operator=(RNG&) = delete;
-        RNG& operator=(RNG&&) = delete;
+        RNG(RNG&&);
+        RNG& operator=(RNG&&);
 
     private:
         std::unique_ptr<RNG_private> d_ptr_;
@@ -65,5 +66,5 @@ namespace rand_gpu
      * 
      * @return size_t memory used by all RNG instances
      */
-    size_t memory_usage();
+    const size_t memory_usage();
 }
