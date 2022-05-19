@@ -28,18 +28,20 @@ namespace rand_gpu
          * @param seed Custom seed
          * @param multi buffer size multiplier
          */
-        RNG(const size_t multi = 1, const uint64_t seed = 0);
+        RNG(const size_t multi = 1, const unsigned long seed = 0);
 
         /**
          * @brief Destroy the RNG object
          * 
          */
         ~RNG();
-
+    
         /**
          * @brief Returns next random number.
+         *        DO NOT MIX TESTED AND UNTESTED TYPES!
          * 
-         * @tparam T type of random number to be returned - implemented for all primitive types
+         * @tparam T type of random number to be returned - implemented for all primitive types, 
+         *         however, only 32- and 64-bit numbers have been tested for true randomness. 
          */
         template <typename T = unsigned long>
         T get_random();
@@ -49,7 +51,7 @@ namespace rand_gpu
          * 
          * @return size_t 
          */
-        const size_t buffer_size() const;
+        size_t buffer_size() const;
 
         // deleted copy constructor and assignment operator
         RNG(RNG&) = delete;
@@ -66,5 +68,5 @@ namespace rand_gpu
      * 
      * @return size_t memory used by all RNG instances
      */
-    const size_t memory_usage();
+    size_t memory_usage();
 }

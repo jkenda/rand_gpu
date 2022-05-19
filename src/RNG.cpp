@@ -12,6 +12,7 @@
 #include "RNG.hpp"
 #include "rand_gpu.h"
 
+#include <cstdint>
 #include <vector>
 #include <mutex>
 #include <condition_variable>
@@ -84,7 +85,7 @@ class RNG_private
     size_t buf_offset = sizeof(long double);
 
 public:
-    RNG_private(const size_t multi, const uint64_t custom_seed)
+    RNG_private(const size_t multi = 1, const unsigned long custom_seed = 0)
     {
         cl_ulong seed;
 
@@ -237,7 +238,7 @@ public:
         return num;
     }
 
-    const size_t buffer_size() const
+    size_t buffer_size() const
     {
         return buf_size;
     }
@@ -254,7 +255,7 @@ private:
 
 };
 
-const size_t mem_usage()
+size_t mem_usage()
 {
     return mem_all;
 }
@@ -300,7 +301,7 @@ rand_gpu_rng *rand_gpu_new(const size_t multi)
     return (rand_gpu_rng *) new RNG_private(multi, 0);
 }
 
-rand_gpu_rng *rand_gpu_new_with_seed(const size_t multi, const uint64_t seed)
+rand_gpu_rng *rand_gpu_new_with_seed(const size_t multi, const unsigned long seed)
 {
     return (rand_gpu_rng *) new RNG_private(multi, seed);
 }
@@ -313,10 +314,10 @@ void rand_gpu_delete(rand_gpu_rng *rng)
 size_t rand_gpu_buffer_size(rand_gpu_rng *rng) { return ((RNG_private *) rng)->buffer_size(); }
 size_t rand_gpu_memory() { return mem_all; }
 
-unsigned long  rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint64_t>(); }
-unsigned int   rand_gpu_u32(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint32_t>(); }
-unsigned short rand_gpu_u16(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint16_t>(); }
-unsigned char  rand_gpu_u8(rand_gpu_rng *rng)  { return ((RNG_private *) rng)->get_random<uint8_t>();  }
+unsigned long  rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<unsigned long>(); }
+unsigned int   rand_gpu_u32(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<unsigned int>(); }
+unsigned short rand_gpu_u16(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<unsigned short>(); }
+unsigned char  rand_gpu_u8(rand_gpu_rng *rng)  { return ((RNG_private *) rng)->get_random<unsigned char>();  }
 
 float       rand_gpu_float(rand_gpu_rng *rng)       { return ((RNG_private *) rng)->get_random<float>();       }
 double      rand_gpu_double(rand_gpu_rng *rng)      { return ((RNG_private *) rng)->get_random<double>();      }
@@ -331,7 +332,7 @@ RNG definitions
 
 namespace rand_gpu
 {
-    RNG::RNG(const size_t multi, const uint64_t seed)
+    RNG::RNG(size_t multi, unsigned long seed)
     :   d_ptr_(make_unique<RNG_private>(multi, seed))
     {
     }
@@ -369,12 +370,12 @@ namespace rand_gpu
     template double      RNG::get_random<double>();
     template long double RNG::get_random<long double>();
 
-    const size_t RNG::buffer_size() const
+    size_t RNG::buffer_size() const
     {
         return d_ptr_->buffer_size();
     }
 
-    const size_t memory_usage()
+    size_t memory_usage()
     {
         return mem_usage();
     }

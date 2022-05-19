@@ -37,7 +37,7 @@ rand_gpu_rng *rand_gpu_new(const size_t multi);
  * @param seed Custom seed
  * @return New RNG
  */
-rand_gpu_rng *rand_gpu_new_with_seed(const size_t multi, const uint64_t seed);
+rand_gpu_rng *rand_gpu_new_with_seed(const size_t multi, const unsigned long seed);
 
 /**
  * @brief Deletes the RNG.
