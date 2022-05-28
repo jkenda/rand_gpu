@@ -69,4 +69,5 @@ int main(int argc, char **argv)
     time_std = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
     printf("std pi ≃ %lf (+-%f), %f s\n", pi_std, abs_f(pi_std - M_PI), time_std);
     printf("speedup = %f\n", time_std / time_lib);
+    printf("%lu misses\n", rand_gpu_buf_misses(rng));
 }

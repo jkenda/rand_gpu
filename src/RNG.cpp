@@ -72,7 +72,7 @@ size_t buf_size;
 size_t buf_limit;
 
 
-class RNG_private
+struct RNG_private
 {
     cl::CommandQueue queue;
     cl::Kernel k_generate;
@@ -84,7 +84,8 @@ class RNG_private
 
     size_t buf_offset = sizeof(long double);
 
-public:
+    size_t _buffer_misses = 0;
+
     RNG_private(const size_t multi = 1, const unsigned long custom_seed = 0)
     {
         cl_ulong seed;
@@ -213,6 +214,7 @@ public:
         if (buf_offset == 0)
         {
             unique_lock<mutex> lock(active_host_buf.ready_lock);
+            if (!active_host_buf.ready) _buffer_misses++;
             active_host_buf.ready_cond.wait(lock, [&] { return active_host_buf.ready; });
         }
 
@@ -243,7 +245,11 @@ public:
         return buf_size;
     }
 
-private:
+    size_t buffer_misses() const
+    {
+        return _buffer_misses;
+    }
+
     static void set_flag(cl_event _e, cl_int _s, void *data)
     {
         // notify that buffer is ready
@@ -312,7 +318,9 @@ void rand_gpu_delete(rand_gpu_rng *rng)
 }
 
 size_t rand_gpu_buffer_size(rand_gpu_rng *rng) { return ((RNG_private *) rng)->buffer_size(); }
+size_t rand_gpu_buf_misses(rand_gpu_rng *rng) { return ((RNG_private *) rng)->buffer_misses(); }
 size_t rand_gpu_memory() { return mem_all; }
+
 
 unsigned long  rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<unsigned long>(); }
 unsigned int   rand_gpu_u32(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<unsigned int>(); }
@@ -378,6 +386,11 @@ namespace rand_gpu
     size_t memory_usage()
     {
         return mem_usage();
+    }
+
+    size_t RNG::buffer_misses() const
+    {
+        return d_ptr_->buffer_misses();
     }
 
 }

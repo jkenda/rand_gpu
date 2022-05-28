@@ -6,11 +6,12 @@ CPPFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
 SLURM_ARGS= --reservation=fri -c2 -G2
 
 # Arnes
-# štej "zgrešitve"
+# izmeri pri različnih deležih generiranja proti računanju
 # 2 bufferja -> krožna vrsta?
-# izmeri delež generiranja proti računanju
 # kakšna je razlika, koliko naklj. števil naenkrat zahtevam
 # naredi par grafov iz meritev
+# več algoritmov (predvsem Mersenne twister), podajn možnost izbire
+# (navaden Tyche namesto Tyche_I)
 
 default: lib/librand_gpu.so
 
@@ -26,10 +27,10 @@ install:
 	cp lib/librand_gpu.so ~/.local/lib/
 
 run: pi_parallel
-	LD_LIBRARY_PATH=~/.local/lib bin/pi_parallel
+	LD_LIBRARY_PATH=lib bin/pi_parallel
 
 run_slurm: pi_parallel
-	LD_LIBRARY_PATH=~/.local/lib srun $(SLURM_ARGS) bin/pi_parallel | tee output &
+	LD_LIBRARY_PATH=lib srun $(SLURM_ARGS) bin/pi_parallel | tee output &
 
 
 bin/test_kernel: tools/test_kernel.cpp kernel.hpp
@@ -47,9 +48,9 @@ print: lib/librand_gpu.so examples/print.c
 	@mkdir -p bin
 	$(CC) $(CFLAGS) -Llib -o bin/print examples/print.c -lrand_gpu
 
-pi: lib/librand_gpu.so examples/pi.c
+pi: lib/librand_gpu.so examples/pi.cpp
 	@mkdir -p bin
-	$(CC) $(CFLAGS) -Llib -o bin/pi examples/pi.c -lrand_gpu
+	$(CPPC) $(CPPFLAGS) -Llib -o bin/pi examples/pi.cpp -lrand_gpu
 
 pi_simple: lib/librand_gpu.so examples/pi_simple.c
 	@mkdir -p bin
@@ -66,6 +67,10 @@ equality: lib/librand_gpu.so test/equality.cpp
 fastest_multiplier: lib/librand_gpu.so test/fastest_multiplier.c
 	@mkdir -p bin
 	$(CC) $(CFLAGS) -Llib -Wno-unused-value -o bin/fastest_multiplier test/fastest_multiplier.c -lrand_gpu
+
+speedup_measurement: lib/librand_gpu.so test/speedup_measurement.cpp
+	@mkdir -p bin
+	$(CPPC) $(CPPFLAGS) -Llib -o bin/speedup_measurement test/speedup_measurement.cpp -lrand_gpu
 
 clean:
 	-rm *.o
