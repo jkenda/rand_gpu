@@ -1,12 +1,7 @@
-#include <stdio.h>
-#include <math.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <time.h>
-#include <sys/time.h>
-
-#define RAND_GPU_32
-#include "../src/rand_gpu.h"
+#include "../src/RNG.hpp"
+#include <iostream>
+#include <cmath>
+#include <chrono>
 
 #define SAMPLES (1000000000UL)
 
@@ -14,6 +9,9 @@ double pi_std, pi_lib;
 float time_std, time_lib;
 struct timespec start, end;
 
+using std::chrono::system_clock;
+using std::chrono::duration_cast;
+using std::chrono::microseconds;
 
 float abs_f(float a)
 {
@@ -28,29 +26,25 @@ int main(int argc, char **argv)
         sscanf(argv[1], "%lu", &times);
     }
     
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    auto start = system_clock::now();
 
-    rand_gpu_rng *rng = rand_gpu_new(16, times);
+    rand_gpu::RNG rng(times);
 
     long cnt = 0;
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-        float a = rand_gpu_float(rng);
-        float b = rand_gpu_float(rng);
+        float a = rng.get_random<float>();
+        float b = rng.get_random<float>();
         if (a*a + b*b < 1.0f) {
             cnt++;
         }
     }
     pi_lib = (double) cnt / SAMPLES * 4;
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-
-    rand_gpu_delete(rng);
-
-    time_lib = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
+    time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
     printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, abs_f(pi_lib - M_PI), time_lib);
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    start = system_clock::now();
 
     srand(time(NULL));
     cnt = 0;
@@ -64,10 +58,8 @@ int main(int argc, char **argv)
     }
     pi_std = (double) cnt / SAMPLES * 4;
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-
-    time_std = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
+    time_std = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
     printf("std pi ≃ %lf (+-%f), %f s\n", pi_std, abs_f(pi_std - M_PI), time_std);
     printf("speedup = %f\n", time_std / time_lib);
-    printf("%lu misses\n", rand_gpu_buf_misses(rng));
+    printf("%lu misses\n", rng.buffer_misses());
 }

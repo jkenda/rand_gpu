@@ -28,14 +28,14 @@ namespace rand_gpu
          * @param seed Custom seed
          * @param multi buffer size multiplier
          */
-        RNG(const size_t multi = 1, const unsigned long seed = 0);
+        RNG(const size_t n_buffers = 2, const size_t multi = 1, const unsigned long seed = 0);
 
         /**
          * @brief Destroy the RNG object
          * 
          */
         ~RNG();
-    
+
         /**
          * @brief Returns next random number.
          *        DO NOT MIX TESTED AND UNTESTED TYPES!

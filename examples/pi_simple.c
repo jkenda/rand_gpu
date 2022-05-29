@@ -22,12 +22,12 @@ float abs_f(float a)
 
 int main(int argc, char **argv)
 {
-    size_t times = 2;
+    size_t times = 16;
     if (argc == 2) {
         sscanf(argv[1], "%lu", &times);
     }
     
-    rand_gpu_rng *rng = rand_gpu_new(times);
+    rand_gpu_rng *rng = rand_gpu_new(4, times);
 
     long cnt = 0;
 

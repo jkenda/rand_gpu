@@ -14,9 +14,9 @@
 
 #include <cstdint>
 #include <vector>
+#include <array>
 #include <mutex>
 #include <condition_variable>
-#include <array>
 #include <random>
 #include <iostream>
 #include <cstring>
@@ -32,17 +32,13 @@
 
 #define TYCHE_I_STATE_SIZE (4 * sizeof(cl_uint))
 
-/*
-TODO: queue on graphics card
-*/
-
 using namespace std;
 using chrono::duration_cast, chrono::microseconds, chrono::system_clock;
 
 struct Buffer
 {
     vector<uint8_t> _data;
-    bool ready;
+    bool ready = true;
     mutex ready_lock;
     cl::Event ready_event;
     condition_variable ready_cond;
@@ -77,16 +73,20 @@ struct RNG_private
     cl::CommandQueue queue;
     cl::Kernel k_generate;
     cl::Buffer state_buf;
-    cl::Buffer device_buffer;
 
-    array<Buffer, 2> host_buffer;
+    const size_t _n_buffers;
+    vector<cl::Buffer> device_buffer;
+    vector<Buffer> host_buffer;
     uint_fast8_t active_buf = 0;
 
     size_t buf_offset = sizeof(long double);
 
     size_t _buffer_misses = 0;
 
-    RNG_private(const size_t multi = 1, const unsigned long custom_seed = 0)
+    RNG_private(size_t n_buffers = 2, const size_t multi = 1, const unsigned long custom_seed = 0)
+    :
+        _n_buffers(max(n_buffers, 2LU)),
+        host_buffer(_n_buffers)
     {
         cl_ulong seed;
 
@@ -164,14 +164,15 @@ struct RNG_private
         }
 
         // increase total memory usage counter
-        mem_all += 2 * buf_size;
+        mem_all += _n_buffers * buf_size;
 
         // resize host buffers, create device buffers
-        host_buffer[0].resize(buf_size);
-        host_buffer[1].resize(buf_size);
         state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, global_size[0] * TYCHE_I_STATE_SIZE);
-        device_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size);
-        cl::Buffer device_buffer_temp(context, CL_MEM_WRITE_ONLY, buf_size);
+        device_buffer = vector(_n_buffers, cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size));
+        for (Buffer &buf : host_buffer)
+        {
+            buf.resize(buf_size);
+        }
 
         // initialize RNG
         cl::Kernel k_init(program, "init");
@@ -183,17 +184,17 @@ struct RNG_private
         k_generate = cl::Kernel(program, "generate");
         k_generate.setArg(0, state_buf);
 
-        // fill both buffers
-        vector<cl::Event> buffers_read(2);
-        k_generate.setArg(1, device_buffer_temp);
-        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
-        k_generate.setArg(1, device_buffer);
-        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
-        queue.enqueueReadBuffer(device_buffer, false, 0, buf_size, host_buffer[0].data(), nullptr, &buffers_read[0]);
-        queue.enqueueReadBuffer(device_buffer_temp, false, 0, buf_size, host_buffer[1].data(), nullptr, &buffers_read[1]);
+        // fill all buffers
+        vector<cl::Event> buffers_read(_n_buffers);
+
+        for (size_t i = 0; i < _n_buffers; i++)
+        {
+            k_generate.setArg(1, device_buffer[i]);
+            queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+            queue.enqueueReadBuffer(device_buffer[i], false, 0, buf_size, host_buffer[i].data(), nullptr, &buffers_read[i]);
+        }
+
         cl::Event::waitForEvents(buffers_read);
-        host_buffer[0].ready = true;
-        host_buffer[1].ready = true;
 
         // generate future numbers
         queue.enqueueNDRangeKernel(k_generate, 0, global_size);
@@ -229,12 +230,13 @@ struct RNG_private
             active_host_buf.ready = false;
 
             // enqueue reading data, generating future numbers
-            queue.enqueueReadBuffer(device_buffer, false, 0, buf_size, active_host_buf.data(), nullptr, &active_host_buf.ready_event);
+            k_generate.setArg(1, device_buffer[active_buf]);
+            queue.enqueueReadBuffer(device_buffer[active_buf], false, 0, buf_size, active_host_buf.data(), nullptr, &active_host_buf.ready_event);
             queue.enqueueNDRangeKernel(k_generate, 0, global_size);
             active_host_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_host_buf);
 
             // switch active buffer
-            active_buf = !active_buf;
+            active_buf = (active_buf + 1) % _n_buffers;
             buf_offset = 0;
         }
         return num;
@@ -302,14 +304,14 @@ C function wrappers
 
 extern "C" {
 
-rand_gpu_rng *rand_gpu_new(const size_t multi)
+rand_gpu_rng *rand_gpu_new(const size_t n_buffers, const size_t multi)
 {
-    return (rand_gpu_rng *) new RNG_private(multi, 0);
+    return (rand_gpu_rng *) new RNG_private(n_buffers, multi, 0);
 }
 
-rand_gpu_rng *rand_gpu_new_with_seed(const size_t multi, const unsigned long seed)
+rand_gpu_rng *rand_gpu_new_with_seed(const size_t n_buffers, const size_t multi, const unsigned long seed)
 {
-    return (rand_gpu_rng *) new RNG_private(multi, seed);
+    return (rand_gpu_rng *) new RNG_private(n_buffers, multi, seed);
 }
 
 void rand_gpu_delete(rand_gpu_rng *rng)
@@ -340,8 +342,8 @@ RNG definitions
 
 namespace rand_gpu
 {
-    RNG::RNG(size_t multi, unsigned long seed)
-    :   d_ptr_(make_unique<RNG_private>(multi, seed))
+    RNG::RNG(const size_t n_buffers, const size_t multi, const unsigned long seed)
+    :   d_ptr_(make_unique<RNG_private>(n_buffers, multi, seed))
     {
     }
 

@@ -28,7 +28,7 @@ typedef void rand_gpu_rng;
  * @param multi 
  * @return New RNG 
  */
-rand_gpu_rng *rand_gpu_new(const size_t multi);
+rand_gpu_rng *rand_gpu_new(const size_t n_buffers, const size_t multi);
 
 /**
  * @brief Initializes a new random number generator.
@@ -37,7 +37,7 @@ rand_gpu_rng *rand_gpu_new(const size_t multi);
  * @param seed Custom seed
  * @return New RNG
  */
-rand_gpu_rng *rand_gpu_new_with_seed(const size_t multi, const unsigned long seed);
+rand_gpu_rng *rand_gpu_new_with_seed(const size_t n_buffers, const size_t multi, const unsigned long seed);
 
 /**
  * @brief Deletes the RNG.
