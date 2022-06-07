@@ -58,7 +58,7 @@ pi_simple: lib/librand_gpu.so examples/pi_simple.c
 
 pi_parallel: lib/librand_gpu.so examples/pi_parallel.cpp
 	@mkdir -p bin
-	$(CPPC) $(CFLAGS) -Llib -o bin/pi_parallel examples/pi_parallel.cpp -lm -lrand_gpu -fopenmp
+	$(CPPC) $(CPPFLAGS) -Llib -o bin/pi_parallel examples/pi_parallel.cpp -lm -lrand_gpu -fopenmp
 
 equality: lib/librand_gpu.so test/equality.cpp
 	@mkdir -p bin

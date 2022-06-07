@@ -44,7 +44,7 @@ namespace rand_gpu
          *         however, only 32- and 64-bit numbers have been tested for true randomness. 
          */
         template <typename T = unsigned long>
-        T get_random();
+        T get_random() const;
 
         /**
          * @brief Returns size of random number buffer in bytes

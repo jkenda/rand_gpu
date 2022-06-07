@@ -1,34 +1,30 @@
 #include "../src/RNG.hpp"
 #include <iostream>
+#include <cstdlib>
 #include <cmath>
 #include <chrono>
+#include <random>
 
-#define SAMPLES (1000000000UL)
-
-double pi_std, pi_lib;
-float time_std, time_lib;
-struct timespec start, end;
+#define SAMPLES (5000000000UL)
 
 using std::chrono::system_clock;
 using std::chrono::duration_cast;
 using std::chrono::microseconds;
 
-float abs_f(float a)
-{
-    if (a < 0) return -a;
-    return a;
-}
+using namespace std;
 
 int main(int argc, char **argv)
 {
-    size_t times = 16;
-    if (argc == 2) {
-        sscanf(argv[1], "%lu", &times);
-    }
+    size_t n_buffers = 4;
+    size_t multi = 16;
+    if (argc >= 2)
+        sscanf(argv[1], "%lu", &multi);
+    if (argc == 3)
+        sscanf(argv[2], "%lu", &n_buffers);
     
     auto start = system_clock::now();
 
-    rand_gpu::RNG rng(times);
+    rand_gpu::RNG rng(n_buffers, multi);
 
     long cnt = 0;
 
@@ -39,27 +35,27 @@ int main(int argc, char **argv)
             cnt++;
         }
     }
-    pi_lib = (double) cnt / SAMPLES * 4;
+    double pi_lib = (double) cnt / SAMPLES * 4;
 
-    time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
-    printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, abs_f(pi_lib - M_PI), time_lib);
+    float time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
+    printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, abs(pi_lib - M_PI), time_lib);
+    printf("%lu misses\n", rng.buffer_misses());
 
     start = system_clock::now();
 
-    srand(time(NULL));
+    mt19937 generator(duration_cast<microseconds>(system_clock::now().time_since_epoch()).count());
     cnt = 0;
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-        float a = (float) rand() / RAND_MAX;
-        float b = (float) rand() / RAND_MAX;
+        float a = generator() / (float) UINT32_MAX;
+        float b = generator() / (float) UINT32_MAX;
         if (a*a + b*b < 1.0f) {
             cnt++;
         }
     }
-    pi_std = (double) cnt / SAMPLES * 4;
+    double pi_std = (double) cnt / SAMPLES * 4;
 
-    time_std = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
-    printf("std pi ≃ %lf (+-%f), %f s\n", pi_std, abs_f(pi_std - M_PI), time_std);
+    float time_std = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
+    printf("std pi ≃ %lf (+-%f), %f s\n", pi_std, abs(pi_std - M_PI), time_std);
     printf("speedup = %f\n", time_std / time_lib);
-    printf("%lu misses\n", rng.buffer_misses());
 }

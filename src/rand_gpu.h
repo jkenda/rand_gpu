@@ -25,19 +25,19 @@ typedef void rand_gpu_rng;
 /**
  * @brief Initializes a new random number generator.
  * 
- * @param multi 
+ * @param buffer_multi 
  * @return New RNG 
  */
-rand_gpu_rng *rand_gpu_new(const size_t n_buffers, const size_t multi);
+rand_gpu_rng *rand_gpu_new(const size_t n_buffers, const size_t buffer_multi);
 
 /**
  * @brief Initializes a new random number generator.
  * 
- * @param multi Buffer size multiplier
+ * @param buffer_multi Buffer size multiplier
  * @param seed Custom seed
  * @return New RNG
  */
-rand_gpu_rng *rand_gpu_new_with_seed(const size_t n_buffers, const size_t multi, const unsigned long seed);
+rand_gpu_rng *rand_gpu_new_with_seed(const size_t n_buffers, const size_t buffer_multi, const unsigned long seed);
 
 /**
  * @brief Deletes the RNG.

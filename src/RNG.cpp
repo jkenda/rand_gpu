@@ -63,9 +63,9 @@ cl::Context context;
 cl::Device  device;
 cl::Program program;
 
-cl::NDRange global_size;
-size_t buf_size;
-size_t buf_limit;
+cl::NDRange _global_size;
+size_t _buffer_size;
+size_t _buf_limit;
 
 
 struct RNG_private
@@ -73,10 +73,10 @@ struct RNG_private
     cl::CommandQueue queue;
     cl::Kernel k_generate;
     cl::Buffer state_buf;
+    cl::Buffer device_buffer;
 
     const size_t _n_buffers;
-    vector<cl::Buffer> device_buffer;
-    vector<Buffer> host_buffer;
+    vector<Buffer> _host_buffers;
     uint_fast8_t active_buf = 0;
 
     size_t buf_offset = sizeof(long double);
@@ -86,7 +86,7 @@ struct RNG_private
     RNG_private(size_t n_buffers = 2, const size_t multi = 1, const unsigned long custom_seed = 0)
     :
         _n_buffers(max(n_buffers, 2LU)),
-        host_buffer(_n_buffers)
+        _host_buffers(_n_buffers)
     {
         cl_ulong seed;
 
@@ -142,9 +142,9 @@ struct RNG_private
                 uint32_t max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
                 size_t max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
 
-                global_size = cl::NDRange(max(multi, 1LU) * max_cu * max_wg_size);
-                buf_size = global_size[0] * sizeof(cl_ulong);
-                buf_limit = buf_size - sizeof(long double);
+                _global_size = cl::NDRange(max(multi, 1LU) * max_cu * max_wg_size);
+                _buffer_size = _global_size[0] * sizeof(cl_ulong);
+                _buf_limit = _buffer_size - sizeof(long double);
 
                 initialized = true;
             }
@@ -164,21 +164,22 @@ struct RNG_private
         }
 
         // increase total memory usage counter
-        mem_all += _n_buffers * buf_size;
+        mem_all += _n_buffers * _buffer_size;
 
         // resize host buffers, create device buffers
-        state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, global_size[0] * TYCHE_I_STATE_SIZE);
-        device_buffer = vector(_n_buffers, cl::Buffer(context, CL_MEM_WRITE_ONLY, buf_size));
-        for (Buffer &buf : host_buffer)
+        state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _global_size[0] * TYCHE_I_STATE_SIZE);
+        device_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, _buffer_size);
+        vector<cl::Buffer> temp_buffers(_n_buffers-1, cl::Buffer(context, CL_MEM_WRITE_ONLY, _buffer_size));
+        for (Buffer &buf : _host_buffers)
         {
-            buf.resize(buf_size);
+            buf.resize(_buffer_size);
         }
 
         // initialize RNG
         cl::Kernel k_init(program, "init");
         k_init.setArg(0, state_buf);
         k_init.setArg(1, sizeof(cl_ulong), &seed);
-        queue.enqueueNDRangeKernel(k_init, 0, global_size);
+        queue.enqueueNDRangeKernel(k_init, 0, _global_size);
 
         // create kernel
         k_generate = cl::Kernel(program, "generate");
@@ -187,29 +188,33 @@ struct RNG_private
         // fill all buffers
         vector<cl::Event> buffers_read(_n_buffers);
 
-        for (size_t i = 0; i < _n_buffers; i++)
+        for (size_t i = 0; i < _n_buffers-1; i++)
         {
-            k_generate.setArg(1, device_buffer[i]);
-            queue.enqueueNDRangeKernel(k_generate, 0, global_size);
-            queue.enqueueReadBuffer(device_buffer[i], false, 0, buf_size, host_buffer[i].data(), nullptr, &buffers_read[i]);
+            k_generate.setArg(1, temp_buffers[i]);
+            queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
+            queue.enqueueReadBuffer(temp_buffers[i], false, 0, _buffer_size, _host_buffers[i].data(), nullptr, &buffers_read[i]);
         }
+        k_generate.setArg(1, device_buffer);
+        queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
+        queue.enqueueReadBuffer(device_buffer, false, 0, _buffer_size, _host_buffers[_n_buffers-1].data(), nullptr, &buffers_read[_n_buffers-1]);
 
         cl::Event::waitForEvents(buffers_read);
 
         // generate future numbers
-        queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+        k_generate.setArg(1, device_buffer);
+        queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
     }
 
     ~RNG_private()
     {
-        mem_all -= 2 * buf_size;
+        mem_all -= _n_buffers * _buffer_size;
     }
 
 
     template <typename T>
     T get_random()
     {
-        Buffer &active_host_buf = host_buffer[active_buf];
+        Buffer &active_host_buf = _host_buffers[active_buf];
 
         // just switched buffers - wait for buffer to be ready
         if (buf_offset == 0)
@@ -225,26 +230,26 @@ struct RNG_private
         buf_offset += sizeof(T);
 
         // out of numbers in current buffer
-        if (buf_offset >= buf_limit)
+        if (buf_offset >= _buf_limit)
         {
             active_host_buf.ready = false;
 
             // enqueue reading data, generating future numbers
-            k_generate.setArg(1, device_buffer[active_buf]);
-            queue.enqueueReadBuffer(device_buffer[active_buf], false, 0, buf_size, active_host_buf.data(), nullptr, &active_host_buf.ready_event);
-            queue.enqueueNDRangeKernel(k_generate, 0, global_size);
+            queue.enqueueReadBuffer(device_buffer, false, 0, _buffer_size, active_host_buf.data(), nullptr, &active_host_buf.ready_event);
+            queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
             active_host_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_host_buf);
 
             // switch active buffer
             active_buf = (active_buf + 1) % _n_buffers;
             buf_offset = 0;
         }
+        
         return num;
     }
 
     size_t buffer_size() const
     {
-        return buf_size;
+        return _buffer_size;
     }
 
     size_t buffer_misses() const
@@ -304,14 +309,14 @@ C function wrappers
 
 extern "C" {
 
-rand_gpu_rng *rand_gpu_new(const size_t n_buffers, const size_t multi)
+rand_gpu_rng *rand_gpu_new(const size_t n_buffers, const size_t buffer_multi)
 {
-    return (rand_gpu_rng *) new RNG_private(n_buffers, multi, 0);
+    return (rand_gpu_rng *) new RNG_private(n_buffers, buffer_multi, 0);
 }
 
-rand_gpu_rng *rand_gpu_new_with_seed(const size_t n_buffers, const size_t multi, const unsigned long seed)
+rand_gpu_rng *rand_gpu_new_with_seed(const size_t n_buffers, const size_t buffer_multi, const unsigned long seed)
 {
-    return (rand_gpu_rng *) new RNG_private(n_buffers, multi, seed);
+    return (rand_gpu_rng *) new RNG_private(n_buffers, buffer_multi, seed);
 }
 
 void rand_gpu_delete(rand_gpu_rng *rng)
@@ -353,7 +358,7 @@ namespace rand_gpu
     RNG::~RNG() = default;
 
     template <typename T>
-    T RNG::get_random()
+    T RNG::get_random() const
     {
         return d_ptr_->get_random<T>();
     }
@@ -362,37 +367,37 @@ namespace rand_gpu
     instantiate templates for all primitives
     */
 
-    template unsigned long long RNG::get_random<unsigned long long>();
-    template unsigned long      RNG::get_random<unsigned long>();
-    template unsigned int       RNG::get_random<unsigned int>();
-    template unsigned short     RNG::get_random<unsigned short>();
-    template unsigned char      RNG::get_random<unsigned char>();
+    template unsigned long long RNG::get_random<unsigned long long>() const;
+    template unsigned long      RNG::get_random<unsigned long>() const;
+    template unsigned int       RNG::get_random<unsigned int>() const;
+    template unsigned short     RNG::get_random<unsigned short>() const;
+    template unsigned char      RNG::get_random<unsigned char>() const;
 
-    template long long RNG::get_random<long long>();
-    template long      RNG::get_random<long>();
-    template int       RNG::get_random<int>();
-    template short     RNG::get_random<short>();
-    template char      RNG::get_random<char>();
+    template long long RNG::get_random<long long>() const;
+    template long      RNG::get_random<long>() const;
+    template int       RNG::get_random<int>() const;
+    template short     RNG::get_random<short>() const;
+    template char      RNG::get_random<char>() const;
 
-    template bool      RNG::get_random<bool>();
+    template bool      RNG::get_random<bool>() const;
 
-    template float       RNG::get_random<float>();
-    template double      RNG::get_random<double>();
-    template long double RNG::get_random<long double>();
+    template float       RNG::get_random<float>() const;
+    template double      RNG::get_random<double>() const;
+    template long double RNG::get_random<long double>() const;
 
     size_t RNG::buffer_size() const
     {
         return d_ptr_->buffer_size();
     }
 
-    size_t memory_usage()
-    {
-        return mem_usage();
-    }
-
     size_t RNG::buffer_misses() const
     {
         return d_ptr_->buffer_misses();
+    }
+
+    size_t memory_usage()
+    {
+        return mem_usage();
     }
 
 }
