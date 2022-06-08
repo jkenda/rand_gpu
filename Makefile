@@ -42,15 +42,15 @@ RNG.o: src/RNG.hpp src/RNG.cpp kernel.hpp
 	$(CPPC) $(CPPFLAGS) -c src/RNG.cpp -fPIC
 
 kernel.hpp: src/kernels/server.cl
-	tools/convert_kernel.py src/kernels/server.cl
+	tools/convert_kernel.py src/kernels/server.cl kernel.hpp
 
 print: lib/librand_gpu.so examples/print.c
 	@mkdir -p bin
 	$(CC) $(CFLAGS) -Llib -o bin/print examples/print.c -lrand_gpu
 
-pi: lib/librand_gpu.so examples/pi.cpp
+pi: lib/librand_gpu.so examples/pi.c
 	@mkdir -p bin
-	$(CPPC) $(CPPFLAGS) -Llib -o bin/pi examples/pi.cpp -lrand_gpu
+	$(CC) $(CFLAGS) -Llib -o bin/pi examples/pi.c -lrand_gpu
 
 pi_simple: lib/librand_gpu.so examples/pi_simple.c
 	@mkdir -p bin
