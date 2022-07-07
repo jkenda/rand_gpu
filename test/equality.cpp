@@ -10,45 +10,73 @@
  * 
  */
 
-#include <cstdio>
+#include <iostream>
 #include <vector>
 #include "../src/RNG.hpp"
 
+using namespace std;
 using std::vector;
 
-int main()
+int main(int argc, char **argv)
 {
-    rand_gpu::RNG rng(32);
+    size_t n_buffers = 8;
+    size_t multi = 16;
+    if (argc >= 2)
+        sscanf(argv[1], "%lu", &n_buffers);
+    if (argc == 3)
+        sscanf(argv[2], "%lu", &multi);
+
+    rand_gpu::RNG rng(n_buffers, multi);
 
     size_t bufsiz = rng.buffer_size();
-    vector<unsigned long> a;
-    vector<unsigned long> b;
-    vector<unsigned long> c;
 
-    for (size_t i = 0; i < bufsiz; i++) {
-        a.emplace_back(rng.get_random<unsigned long>());
+    vector<vector<unsigned long>> buffers1(n_buffers);
+    vector<vector<unsigned long>> buffers2(n_buffers);
+
+    cout << "filling buffers 1\n";
+    for (size_t i = 0; i < n_buffers; i++)
+    {
+        for (size_t j = 0; j < bufsiz; j++)
+        {
+            buffers1[i].emplace_back(rng.get_random<unsigned long>());
+        }
     }
 
-    for (size_t i = 0; i < bufsiz; i++) {
-        b.emplace_back(rng.get_random<unsigned long>());
+    cout << "filling buffers 2\n";
+    for (size_t i = 0; i < n_buffers; i++)
+    {
+        for (size_t j = 0; j < bufsiz; j++)
+        {
+            buffers2[i].emplace_back(rng.get_random<unsigned long>());
+        }
     }
 
-    for (size_t i = 0; i < bufsiz; i++) {
-        c.emplace_back(rng.get_random<unsigned long>());
+    /* test how similar they are */
+
+    // similarity within
+    cout << "testing internal similarity\n";
+    for (size_t i = 0; i < n_buffers; i++)
+    {
+        for (size_t j = i+1; j < n_buffers; j++)
+        {
+            long sim = 0;
+            for (size_t k = 0; k < bufsiz; k++)
+            {
+                if (buffers1[i][k] == buffers1[j][k]) sim++;
+                if (buffers2[i][k] == buffers2[j][k]) sim++;
+            }
+            cout << "similarity buf_" << i << " <=> buf_" << j << ": " << sim << " / " << bufsiz << '\n'; 
+        }
     }
 
-    // test how similar they are
-    long simab = 0;
-    long simac = 0;
-    long simbc = 0;
-    for (size_t i = 0; i < bufsiz; i++) {
-        if (a[i] == b[i]) simab++;
-        if (b[i] == c[i]) simbc++;
-        if (a[i] == c[i]) simac++;
+    // outside similarity
+    long sim = 0;
+    for (size_t i = 0; i < n_buffers; i++)
+    {
+        for (size_t j = 0; j < bufsiz; j++)
+        {
+            if (buffers1[i][j] == buffers2[i][j]) sim++;
+        }
     }
-
-    printf("bufsiz: %lu\n", bufsiz);
-    printf("similarity a <=> b: %lu / %lu, %f\n", simab, bufsiz, (float) simab / bufsiz);
-    printf("similarity b <=> c: %lu / %lu, %f\n", simbc, bufsiz, (float) simbc / bufsiz);
-    printf("similarity a <=> c: %lu / %lu, %f\n", simac, bufsiz, (float) simac / bufsiz);
+    cout << "outside similarity: " << sim << " / " << n_buffers * bufsiz << '\n';
 }

@@ -1,9 +1,8 @@
-#include "../src/RNG.hpp"
 #include <iostream>
-#include <cstdlib>
 #include <cmath>
 #include <chrono>
 #include <random>
+#include "../src/RNG.hpp"
 
 #define SAMPLES (5000000000UL)
 
@@ -18,9 +17,9 @@ int main(int argc, char **argv)
     size_t n_buffers = 4;
     size_t multi = 16;
     if (argc >= 2)
-        sscanf(argv[1], "%lu", &multi);
+        sscanf(argv[1], "%lu", &n_buffers);
     if (argc == 3)
-        sscanf(argv[2], "%lu", &n_buffers);
+        sscanf(argv[2], "%lu", &multi);
     
     auto start = system_clock::now();
 

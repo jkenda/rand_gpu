@@ -83,7 +83,7 @@ struct RNG_private
 
     size_t _buffer_misses = 0;
 
-    RNG_private(size_t n_buffers = 2, const size_t multi = 1, const unsigned long custom_seed = 0)
+    RNG_private(const size_t n_buffers = 2, const size_t multi = 1, const unsigned long custom_seed = 0)
     :
         _n_buffers(max(n_buffers, 2LU)),
         _host_buffers(_n_buffers)
@@ -348,7 +348,8 @@ RNG definitions
 namespace rand_gpu
 {
     RNG::RNG(const size_t n_buffers, const size_t multi, const unsigned long seed)
-    :   d_ptr_(make_unique<RNG_private>(n_buffers, multi, seed))
+    :   
+        d_ptr_(make_unique<RNG_private>(n_buffers, multi, seed))
     {
     }
 
@@ -358,7 +359,7 @@ namespace rand_gpu
     RNG::~RNG() = default;
 
     template <typename T>
-    T RNG::get_random() const
+    T RNG::get_random()
     {
         return d_ptr_->get_random<T>();
     }
@@ -367,23 +368,24 @@ namespace rand_gpu
     instantiate templates for all primitives
     */
 
-    template unsigned long long RNG::get_random<unsigned long long>() const;
-    template unsigned long      RNG::get_random<unsigned long>() const;
-    template unsigned int       RNG::get_random<unsigned int>() const;
-    template unsigned short     RNG::get_random<unsigned short>() const;
-    template unsigned char      RNG::get_random<unsigned char>() const;
+    template unsigned long long int RNG::get_random<unsigned long long int>();
+    template unsigned long int  RNG::get_random<unsigned long int>();
+    template unsigned int       RNG::get_random<unsigned int>();
+    template unsigned short int RNG::get_random<unsigned short int>();
+    template unsigned char      RNG::get_random<unsigned char>();
 
-    template long long RNG::get_random<long long>() const;
-    template long      RNG::get_random<long>() const;
-    template int       RNG::get_random<int>() const;
-    template short     RNG::get_random<short>() const;
-    template char      RNG::get_random<char>() const;
+    template long long int RNG::get_random<long long int>();
+    template long int      RNG::get_random<long int>();
+    template int           RNG::get_random<int>();
+    template short int     RNG::get_random<short int>();
+    template signed char   RNG::get_random<signed char>();
 
-    template bool      RNG::get_random<bool>() const;
+    template char RNG::get_random<char>();
+    template bool RNG::get_random<bool>();
 
-    template float       RNG::get_random<float>() const;
-    template double      RNG::get_random<double>() const;
-    template long double RNG::get_random<long double>() const;
+    template float       RNG::get_random<float>();
+    template double      RNG::get_random<double>();
+    template long double RNG::get_random<long double>();
 
     size_t RNG::buffer_size() const
     {

@@ -51,6 +51,10 @@ void rand_gpu_delete(rand_gpu_rng *rng);
  */
 size_t rand_gpu_buffer_size(rand_gpu_rng *rng);
 
+/**
+ * @brief Returns number of buffer misses since RNG was created
+ * @param rng RNG whose misses to retrieve
+ */
 size_t rand_gpu_buf_misses(rand_gpu_rng *rng);
 
 /**

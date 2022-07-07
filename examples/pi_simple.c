@@ -4,34 +4,27 @@
 #include <stdint.h>
 #include <time.h>
 #include <sys/time.h>
-
 #include "../src/rand_gpu.h"
 
 #define SAMPLES (100000000UL)
+#define ABS(A) ((A) >= 0 ? (A) : -(A))
 
-float pi_lib;
-float time_lib;
 struct timespec start, end;
-
-float abs_f(float a)
-{
-    if (a < 0) return -a;
-    return a;
-}
-
 
 int main(int argc, char **argv)
 {
-    size_t times = 16;
-    if (argc == 2) {
-        sscanf(argv[1], "%lu", &times);
-    }
+    size_t n_buffers = 8;
+    size_t multi = 16;
+    if (argc >= 2)
+        sscanf(argv[1], "%lu", &n_buffers);
+    if (argc == 3)
+        sscanf(argv[2], "%lu", &multi);
     
-    rand_gpu_rng *rng = rand_gpu_new(4, times);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
+    rand_gpu_rng *rng = rand_gpu_new(n_buffers, multi);
 
     long cnt = 0;
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     for (uint32_t i = 0; i < SAMPLES; i++) {
         float a = rand_gpu_float(rng);
@@ -40,10 +33,10 @@ int main(int argc, char **argv)
             cnt++;
         }
     }
-    pi_lib = (double) cnt / SAMPLES * 4;
+    float pi = (double) cnt / SAMPLES * 4;
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
-    time_lib = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
-    printf("lib pi ≃ %f (+-%f), %f s\n", pi_lib, abs_f(pi_lib - M_PI), time_lib);
+    float time = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
+    printf("lib pi ≃ %f (+-%f), %f s\n", pi, ABS(pi - M_PI), time);
 }
