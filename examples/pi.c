@@ -21,6 +21,9 @@ int main(int argc, char **argv)
     if (argc == 3)
         sscanf(argv[2], "%lu", &multi);
 
+    printf("num. buffers: %lu, multi: %lu\n", n_buffers, multi);
+    printf("real pi: %lf\n", M_PI);
+
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     rand_gpu_rng *rng = rand_gpu_new(n_buffers, multi);
@@ -41,6 +44,7 @@ int main(int argc, char **argv)
     rand_gpu_delete(rng);
 
     float time_lib = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
+    printf("%lu misses\n", rand_gpu_buf_misses(rng));
     printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, ABS(pi_lib - M_PI), time_lib);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -62,5 +66,4 @@ int main(int argc, char **argv)
     float time_std = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
     printf("std pi ≃ %lf (+-%f), %f s\n", pi_std, ABS(pi_std - M_PI), time_std);
     printf("speedup = %f\n", time_std / time_lib);
-    printf("%lu misses\n", rand_gpu_buf_misses(rng));
 }

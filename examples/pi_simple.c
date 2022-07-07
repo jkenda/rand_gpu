@@ -20,6 +20,9 @@ int main(int argc, char **argv)
     if (argc == 3)
         sscanf(argv[2], "%lu", &multi);
     
+    printf("num. buffers: %lu, multi: %lu\n", n_buffers, multi);
+    printf("real pi: %lf\n", M_PI);
+
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     rand_gpu_rng *rng = rand_gpu_new(n_buffers, multi);

@@ -21,6 +21,9 @@ int main(int argc, char **argv)
     if (argc == 3)
         sscanf(argv[2], "%lu", &multi);
     
+    cout << "num. buffers: " << n_buffers << ", multi: " << multi << '\n';
+    cout << "real pi: " << M_PI << '\n';
+
     auto start = system_clock::now();
 
     rand_gpu::RNG rng(n_buffers, multi);
@@ -37,8 +40,8 @@ int main(int argc, char **argv)
     double pi_lib = (double) cnt / SAMPLES * 4;
 
     float time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
-    printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, abs(pi_lib - M_PI), time_lib);
     printf("%lu misses\n", rng.buffer_misses());
+    printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, abs(pi_lib - M_PI), time_lib);
 
     start = system_clock::now();
 

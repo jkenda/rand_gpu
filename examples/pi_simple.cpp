@@ -21,6 +21,9 @@ int main(int argc, char **argv)
     if (argc == 3)
         sscanf(argv[2], "%lu", &multi);
     
+    cout << "num. buffers: " << n_buffers << ", multi: " << multi << '\n';
+    cout << "real pi: " << M_PI << '\n';
+
     auto start = system_clock::now();
 
     rand_gpu::RNG rng(n_buffers, multi);

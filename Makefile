@@ -5,12 +5,11 @@ CPPFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
 
 SLURM_ARGS= --reservation=fri -c2 -G2
 
+# več algoritmov (predvsem Mersenne twister), podajn možnost izbire
 # Arnes
 # izmeri pri različnih deležih generiranja proti računanju
 # kakšna je razlika, koliko naklj. števil naenkrat zahtevam
 # naredi par grafov iz meritev
-# več algoritmov (predvsem Mersenne twister), podajn možnost izbire
-# (navaden Tyche namesto Tyche_I)
 
 default: lib/librand_gpu.so
 
