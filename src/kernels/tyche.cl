@@ -47,6 +47,7 @@ void tyche_seed(__global tyche_state* state, ulong seed){
 	state->b = seed;
 	state->c = 2654435769;
 	state->d = 1367130551 ^ (get_global_id(0) + get_global_size(0) * (get_global_id(1) + get_global_size(1) * get_global_id(2)));
+	#pragma unroll
 	for(uint i=0;i<20;i++){
 		tyche_advance(state);
 	}

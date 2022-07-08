@@ -6,7 +6,7 @@ using namespace std;
 
 int main()
 {
-    for (int i = RAND_GPU_ALGORITHM_KISS09; i <= RAND_GPU_ALGORITHM_TYCHE_I; i++)
+    for (int i = RAND_GPU_ALGORITHM_KISS09; i <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; i++)
     {
         rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(i);
         rand_gpu::RNG rng(2, 1, algorithm, 0);

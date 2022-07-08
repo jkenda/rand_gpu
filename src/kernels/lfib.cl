@@ -47,6 +47,7 @@ void lfib_seed(__global lfib_state* state, ulong j){
 	state->p1=LFIB_LAG1;
 	state->p2=LFIB_LAG2;
 	//if(get_global_id(0)==0) printf("seed %d\n",state->p1);
+	#pragma unroll
     for (int i = 0; i < LFIB_LAG1; i++){
 		j=6906969069UL * j + 1234567UL; //LCG
 		state->s[i] = j | 1; // values must be odd

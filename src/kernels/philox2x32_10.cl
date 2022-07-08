@@ -29,6 +29,7 @@ Internal function. calculates philox2x32-10 random number from state and key.
 */
 ulong philox2x32_10(philox2x32_10_state state, uint key){
 	uint tmp, L = state.L, R = state.R;
+	#pragma unroll
 	for(uint i=0;i<10;i++){
 		uint tmp = R * PHILOX2X32_10_MULTIPLIER;
 		R = mul_hi(R,PHILOX2X32_10_MULTIPLIER) ^ L ^ key;

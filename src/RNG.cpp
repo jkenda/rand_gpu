@@ -208,9 +208,21 @@ struct RNG_private
             name_init = "mt19937_init";
             name_generate = "mt19937_generate";
             break;
+        case RAND_GPU_ALGORITHM_MWC64X:
+            name_init = "mwc64x_init";
+            name_generate = "mwc64x_generate";
+            break;
+        case RAND_GPU_ALGORITHM_PCG6432:
+            name_init = "pcg6432_init";
+            name_generate = "pcg6432_generate";
+            break;
         case RAND_GPU_ALGORITHM_PHILOX2X32_10:
             name_init = "philox2x32_10_init";
             name_generate = "philox2x32_10_generate";
+            break;
+        case RAND_GPU_ALGORITHM_RAN2:
+            name_init = "ran2_init";
+            name_generate = "ran2_generate";
             break;
         case RAND_GPU_ALGORITHM_TINYMT64:
             name_init = "tinymt64_init";
@@ -223,6 +235,14 @@ struct RNG_private
         case RAND_GPU_ALGORITHM_TYCHE:
             name_init = "tyche_init";
             name_generate = "tyche_generate";
+            break;
+        case RAND_GPU_ALGORITHM_WELL512:
+            name_init = "well512_init";
+            name_generate = "well512_generate";
+            break;
+        case RAND_GPU_ALGORITHM_XORSHIFT6432STAR:
+            name_init = "xorshift6432star_init";
+            name_generate = "xorshift6432star_generate";
             break;
         }
 
@@ -237,7 +257,7 @@ struct RNG_private
         case RAND_GPU_ALGORITHM_TYCHE_I:
         {
             k_init.setArg(1, sizeof(cl_ulong), &seed);
-            queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size, cl::NullRange, nullptr, &initialized);
+            queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
             break;
         }
         default:
@@ -251,11 +271,10 @@ struct RNG_private
             }
             cl::Buffer cl_seeds(context, seeds.begin(), seeds.end(), false);
             k_init.setArg(1, cl_seeds);
-            queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size, cl::NullRange, nullptr, &initialized);
+            queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size[0]);
             break;
         }
         }
-        initialized.wait();
 
         // create kernel
         k_generate = cl::Kernel(program, name_generate);
@@ -508,10 +527,15 @@ namespace rand_gpu
             "MRG63K3A (Multiple Recursive Generator)",
             "MSWS - Middle Square Weyl Sequence",
             "MT19937 - Mersenne twister: a 623-dimensionally equidistributed uniform pseudo-random number generator",
+            "MWC64x - 64-bit Multiply With Carry generator that returns 32-bit numbers that are xor of lower and upper 32-bit numbers",
+            "PCG6432 - 64-bit Permutated Congruential generator (PCG-XSH-RR)",
             "Philox2x32_10",
+            "Ran2 - a L'Ecuyer combined recursive generator with a 32-element shuffle-box (from Numerical Recipes)",
             "Tinymt64 - Tiny mersenne twister",
             "Tyche - 512-bit Tyche (Well-Equidistributed Long-period Linear RNG)",
             "Tyche-i - a faster variant of Tyche with a shorter period",
+            "WELL512 - 512-bit WELL (Well-Equidistributed Long-period Linear) RNG",
+            "xorshift6432* - 64-bit xorshift* generator that returns 32-bit values",
         };
         return names[algorithm];
     }

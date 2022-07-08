@@ -65,6 +65,7 @@ Seeds MT19937 RNG.
 void mt19937_seed(__global mt19937_state* state, uint s){
     state->mt[0]= s;
 	uint mti;
+    #pragma unroll
     for (mti=1; mti<MT19937_N; mti++) {
         state->mt[mti] = 1812433253 * (state->mt[mti-1] ^ (state->mt[mti-1] >> 30)) + mti;
 		

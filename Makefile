@@ -12,10 +12,10 @@ SLURM_ARGS= --reservation=fri -c2 -G2
 
 default: lib/librand_gpu.so
 
-all: print pi pi_simple pi_parallel equality frequency fastest_multiplier speedup_measurement
-lib/librand_gpu.so: lib bin/test_kernel install
+all: print pi pi_simple pi_parallel algorithms equality frequency fastest_multiplier speedup_measurement
+lib: lib/librand_gpu.so
 
-lib: RNG.o
+lib/librand_gpu.so: RNG.o bin/test_kernel
 	@mkdir -p lib
 	$(CPPC) $(CPPFLAGS) -shared -o lib/librand_gpu.so RNG.o -lOpenCL -lpthread
 
@@ -60,6 +60,7 @@ pi_parallel: lib/librand_gpu.so examples/pi_parallel.cpp
 	@mkdir -p bin/c++
 	$(CC) $(CFLAGS) -Llib -o bin/pi_parallel examples/pi_parallel.c -lm -lrand_gpu -fopenmp
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/pi_parallel examples/pi_parallel.cpp -lm -lrand_gpu -fopenmp
+
 
 algorithms: lib/librand_gpu.so test/algorithms.cpp
 	@mkdir -p bin/c++
