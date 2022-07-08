@@ -5,7 +5,6 @@ CPPFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
 
 SLURM_ARGS= --reservation=fri -c2 -G2
 
-# več algoritmov (predvsem Mersenne twister), podajn možnost izbire
 # Arnes
 # izmeri pri različnih deležih generiranja proti računanju
 # kakšna je razlika, koliko naklj. števil naenkrat zahtevam
@@ -39,8 +38,8 @@ bin/test_kernel: tools/test_kernel.cpp kernel.hpp
 RNG.o: src/RNG.hpp src/RNG.cpp kernel.hpp
 	$(CPPC) $(CPPFLAGS) -c src/RNG.cpp -fPIC
 
-kernel.hpp: src/kernels/server.cl
-	tools/convert_kernel.py src/kernels/server.cl kernel.hpp
+kernel.hpp: tools/convert_kernel.py src/kernels/*.cl
+	tools/convert_kernel.py src/kernels/ kernel.hpp
 
 print: lib/librand_gpu.so examples/print.c
 	@mkdir -p bin/c++
@@ -61,6 +60,10 @@ pi_parallel: lib/librand_gpu.so examples/pi_parallel.cpp
 	@mkdir -p bin/c++
 	$(CC) $(CFLAGS) -Llib -o bin/pi_parallel examples/pi_parallel.c -lm -lrand_gpu -fopenmp
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/pi_parallel examples/pi_parallel.cpp -lm -lrand_gpu -fopenmp
+
+algorithms: lib/librand_gpu.so test/algorithms.cpp
+	@mkdir -p bin/c++
+	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/algorithms test/algorithms.cpp -lrand_gpu
 
 equality: lib/librand_gpu.so test/equality.cpp
 	@mkdir -p bin/c++

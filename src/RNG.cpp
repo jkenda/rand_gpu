@@ -33,7 +33,7 @@
 #define TYCHE_I_STATE_SIZE (4 * sizeof(cl_uint))
 
 using namespace std;
-using chrono::duration_cast, chrono::microseconds, chrono::system_clock;
+using chrono::duration_cast, chrono::nanoseconds, chrono::system_clock;
 
 struct Buffer
 {
@@ -82,13 +82,16 @@ struct RNG_private
     size_t buf_offset = sizeof(long double);
 
     size_t _buffer_misses = 0;
+    float _init_time;
 
-    RNG_private(const size_t n_buffers = 2, const size_t multi = 1, const unsigned long custom_seed = 0)
+    RNG_private(const size_t n_buffers = 2, const size_t multi = 1,
+        rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE, const unsigned long custom_seed = 0)
     :
         _n_buffers(max(n_buffers, 2LU)),
         _host_buffers(_n_buffers)
     {
         cl_ulong seed;
+        auto start = chrono::high_resolution_clock::now();
 
         {
             lock_guard<mutex> lock(constructor_lock);
@@ -136,7 +139,8 @@ struct RNG_private
                 }
 
                 // initialize host RNG for generating seeds
-                generator = mt19937_64(duration_cast<microseconds>(system_clock::now().time_since_epoch()).count());
+                if (custom_seed == 0)
+                    generator = mt19937_64(duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count());
 
                 // get device info
                 uint32_t max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
@@ -175,14 +179,86 @@ struct RNG_private
             buf.resize(_buffer_size);
         }
 
+        // differentiate algorithms
+        const char *name_init = "", *name_generate = "";
+
+        switch (algorithm)
+        {
+        case RAND_GPU_ALGORITHM_KISS09:
+            name_init = "kiss09_init";
+            name_generate = "kiss09_generate";
+            break;
+        case RAND_GPU_ALGORITHM_LCG12864:
+            name_init = "lcg12864_init";
+            name_generate = "lcg12864_generate";
+            break;
+        case RAND_GPU_ALGORITHM_LFIB:
+            name_init = "lfib_init";
+            name_generate = "lfib_generate";
+            break;
+        case RAND_GPU_ALGORITHM_MRG63K3A:
+            name_init = "mrg63k3a_init";
+            name_generate = "mrg63k3a_generate";
+            break;
+        case RAND_GPU_ALGORITHM_MSWS:
+            name_init = "msws_init";
+            name_generate = "msws_generate";
+            break;
+        case RAND_GPU_ALGORITHM_MT19937:
+            name_init = "mt19937_init";
+            name_generate = "mt19937_generate";
+            break;
+        case RAND_GPU_ALGORITHM_PHILOX2X32_10:
+            name_init = "philox2x32_10_init";
+            name_generate = "philox2x32_10_generate";
+            break;
+        case RAND_GPU_ALGORITHM_TINYMT64:
+            name_init = "tinymt64_init";
+            name_generate = "tinymt64_generate";
+            break;
+        case RAND_GPU_ALGORITHM_TYCHE_I:
+            name_init = "tyche_i_init";
+            name_generate = "tyche_i_generate";
+            break;
+        case RAND_GPU_ALGORITHM_TYCHE:
+            name_init = "tyche_init";
+            name_generate = "tyche_generate";
+            break;
+        }
+
         // initialize RNG
-        cl::Kernel k_init(program, "init");
+        cl::Kernel k_init(program, name_init);
+        cl::Event initialized;
         k_init.setArg(0, state_buf);
-        k_init.setArg(1, sizeof(cl_ulong), &seed);
-        queue.enqueueNDRangeKernel(k_init, 0, _global_size);
+
+        switch (algorithm)
+        {
+        case RAND_GPU_ALGORITHM_TYCHE:
+        case RAND_GPU_ALGORITHM_TYCHE_I:
+        {
+            k_init.setArg(1, sizeof(cl_ulong), &seed);
+            queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size, cl::NullRange, nullptr, &initialized);
+            break;
+        }
+        default:
+        {
+            mt19937_64 s(seed);
+            vector<uint64_t> seeds;
+            seeds.reserve(_global_size[0]);
+            for (size_t i = 0; i < _global_size[0]; i++)
+            {
+                seeds.emplace_back(s());
+            }
+            cl::Buffer cl_seeds(context, seeds.begin(), seeds.end(), false);
+            k_init.setArg(1, cl_seeds);
+            queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size, cl::NullRange, nullptr, &initialized);
+            break;
+        }
+        }
+        initialized.wait();
 
         // create kernel
-        k_generate = cl::Kernel(program, "generate");
+        k_generate = cl::Kernel(program, name_generate);
         k_generate.setArg(0, state_buf);
 
         // fill all buffers
@@ -203,6 +279,9 @@ struct RNG_private
         // generate future numbers
         k_generate.setArg(1, device_buffer);
         queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
+
+        auto end = chrono::high_resolution_clock::now();
+        _init_time = (duration_cast<nanoseconds>(end - start).count() / (float) 1'000'000);
     }
 
     ~RNG_private()
@@ -257,6 +336,11 @@ struct RNG_private
         return _buffer_misses;
     }
 
+    float init_time() const
+    {
+        return _init_time;
+    }
+
     static void set_flag(cl_event _e, cl_int _s, void *data)
     {
         // notify that buffer is ready
@@ -309,14 +393,19 @@ C function wrappers
 
 extern "C" {
 
-rand_gpu_rng *rand_gpu_new(const size_t n_buffers, const size_t buffer_multi)
+rand_gpu_rng *rand_gpu_new_default()
 {
-    return (rand_gpu_rng *) new RNG_private(n_buffers, buffer_multi, 0);
+    return (rand_gpu_rng *) new RNG_private;
 }
 
-rand_gpu_rng *rand_gpu_new_with_seed(const size_t n_buffers, const size_t buffer_multi, const unsigned long seed)
+rand_gpu_rng *rand_gpu_new(size_t n_buffers, size_t buffer_multi, enum rand_gpu_algorithm algorithm)
 {
-    return (rand_gpu_rng *) new RNG_private(n_buffers, buffer_multi, seed);
+    return (rand_gpu_rng *) new RNG_private(n_buffers, buffer_multi, algorithm);
+}
+
+rand_gpu_rng *rand_gpu_new_with_seed(size_t n_buffers, size_t buffer_multi, enum rand_gpu_algorithm algorithm, unsigned long seed)
+{
+    return (rand_gpu_rng *) new RNG_private(n_buffers, buffer_multi, algorithm, seed);
 }
 
 void rand_gpu_delete(rand_gpu_rng *rng)
@@ -326,7 +415,8 @@ void rand_gpu_delete(rand_gpu_rng *rng)
 
 size_t rand_gpu_buffer_size(rand_gpu_rng *rng) { return ((RNG_private *) rng)->buffer_size(); }
 size_t rand_gpu_buf_misses(rand_gpu_rng *rng) { return ((RNG_private *) rng)->buffer_misses(); }
-size_t rand_gpu_memory() { return mem_all; }
+float rand_gpu_init_time(rand_gpu_rng *rng) { return ((RNG_private *) rng)->init_time(); }
+size_t rand_gpu_memory() { return rand_gpu::memory_usage(); }
 
 
 unsigned long  rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<unsigned long>(); }
@@ -338,6 +428,8 @@ float       rand_gpu_float(rand_gpu_rng *rng)       { return ((RNG_private *) rn
 double      rand_gpu_double(rand_gpu_rng *rng)      { return ((RNG_private *) rng)->get_random<double>();      }
 long double rand_gpu_long_double(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<long double>(); }
 
+const char *rand_gpu_algorithm_name(rand_gpu_algorithm algorithm) { return rand_gpu::algorithm_name(algorithm); }
+
 }
 
 
@@ -347,9 +439,9 @@ RNG definitions
 
 namespace rand_gpu
 {
-    RNG::RNG(const size_t n_buffers, const size_t multi, const unsigned long seed)
+    RNG::RNG(size_t n_buffers, size_t multi, rand_gpu_algorithm algorithm, unsigned long seed)
     :   
-        d_ptr_(make_unique<RNG_private>(n_buffers, multi, seed))
+        d_ptr_(make_unique<RNG_private>(n_buffers, multi, algorithm, seed))
     {
     }
 
@@ -397,9 +489,31 @@ namespace rand_gpu
         return d_ptr_->buffer_misses();
     }
 
+    float RNG::init_time() const
+    {
+        return d_ptr_->init_time();
+    }
+
     size_t memory_usage()
     {
         return mem_usage();
+    }
+
+    const char *algorithm_name(rand_gpu_algorithm algorithm)
+    {
+        const char *names[] = {
+            "Kiss09 - KISS (Keep It Simple, Stupid)",
+            "LCG12864 - 128-bit Linear Congruential Generator",
+            "LFib - Multiplicative Lagged Fibbonaci generator (lowest bit is always 1)",
+            "MRG63K3A (Multiple Recursive Generator)",
+            "MSWS - Middle Square Weyl Sequence",
+            "MT19937 - Mersenne twister: a 623-dimensionally equidistributed uniform pseudo-random number generator",
+            "Philox2x32_10",
+            "Tinymt64 - Tiny mersenne twister",
+            "Tyche - 512-bit Tyche (Well-Equidistributed Long-period Linear RNG)",
+            "Tyche-i - a faster variant of Tyche with a shorter period",
+        };
+        return names[algorithm];
     }
 
 }

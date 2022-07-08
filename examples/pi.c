@@ -26,7 +26,7 @@ int main(int argc, char **argv)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    rand_gpu_rng *rng = rand_gpu_new(n_buffers, multi);
+    rand_gpu_rng *rng = rand_gpu_new(n_buffers, multi, RAND_GPU_ALGORITHM_MT19937);
 
     long cnt = 0;
 

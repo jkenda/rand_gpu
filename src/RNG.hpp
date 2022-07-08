@@ -12,6 +12,7 @@
 #pragma once
 
 #include <memory>
+#include "rand_gpu.h"
 
 // forward declaration of the private class
 class RNG_private;
@@ -28,7 +29,8 @@ namespace rand_gpu
          * @param seed Custom seed
          * @param multi buffer size multiplier
          */
-        RNG(const size_t n_buffers = 2, const size_t multi = 1, const unsigned long seed = 0);
+        RNG(size_t n_buffers = 2, size_t multi = 1, rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE,
+            unsigned long seed = 0);
 
         /**
          * @brief Destroy the RNG object
@@ -49,11 +51,23 @@ namespace rand_gpu
         /**
          * @brief Returns size of random number buffer in bytes
          * 
-         * @return size_t 
+         * @return size_t size of random number buffer in bytes
          */
         size_t buffer_size() const;
 
+        /**
+         * @brief Returns number of times we had to wait for GPU to fill the buffer.
+         * 
+         * @return size_t number of buffer misses
+         */
         size_t buffer_misses() const;
+
+        /**
+         * @brief Returns RNG initialization time in ms
+         * 
+         * @return float RNG initialization time in ms
+         */
+        float init_time() const;
 
         // deleted copy constructor and assignment operator
         RNG(RNG&) = delete;
@@ -71,4 +85,6 @@ namespace rand_gpu
      * @return size_t memory used by all RNG instances
      */
     size_t memory_usage();
+
+    const char *algorithm_name(rand_gpu_algorithm algorithm);
 }
