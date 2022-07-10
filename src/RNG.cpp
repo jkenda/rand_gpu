@@ -64,15 +64,15 @@ using chrono::duration_cast, chrono::nanoseconds, chrono::system_clock;
 
 struct Buffer
 {
-    vector<uint8_t> _data;
+    uint8_t *data;
     bool ready = true;
     mutex ready_lock;
     cl::Event ready_event;
     condition_variable ready_cond;
 
-    inline void resize(const size_t size) { _data.resize(size); }
-    inline uint8_t &operator[](const size_t i) { return _data[i]; }
-    inline uint8_t *data() { return _data.data(); }
+    inline void alloc(const size_t size) { data = new uint8_t[size]; }
+    inline uint8_t &operator[](const size_t i) { return data[i]; }
+    ~Buffer() { delete[] data; }
 };
 
 
@@ -294,7 +294,7 @@ struct RNG_private
         vector<cl::Buffer> temp_buffers(_n_buffers-1, cl::Buffer(context, CL_MEM_WRITE_ONLY, _buffer_size));
         for (Buffer &buf : _host_buffers)
         {
-            buf.resize(_buffer_size);
+            buf.alloc(_buffer_size);
         }
 
         // initialize RNG
@@ -335,11 +335,11 @@ struct RNG_private
         {
             k_generate.setArg(1, temp_buffers[i]);
             queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
-            queue.enqueueReadBuffer(temp_buffers[i], false, 0, _buffer_size, _host_buffers[i].data(), nullptr, &buffers_read[i]);
+            queue.enqueueReadBuffer(temp_buffers[i], false, 0, _buffer_size, _host_buffers[i].data, nullptr, &buffers_read[i]);
         }
         k_generate.setArg(1, device_buffer);
         queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
-        queue.enqueueReadBuffer(device_buffer, false, 0, _buffer_size, _host_buffers[_n_buffers-1].data(), nullptr, &buffers_read[_n_buffers-1]);
+        queue.enqueueReadBuffer(device_buffer, false, 0, _buffer_size, _host_buffers[_n_buffers-1].data, nullptr, &buffers_read[_n_buffers-1]);
 
         cl::Event::waitForEvents(buffers_read);
 
@@ -381,7 +381,7 @@ struct RNG_private
             active_host_buf.ready = false;
 
             // enqueue reading data, generating future numbers
-            queue.enqueueReadBuffer(device_buffer, false, 0, _buffer_size, active_host_buf.data(), nullptr, &active_host_buf.ready_event);
+            queue.enqueueReadBuffer(device_buffer, false, 0, _buffer_size, active_host_buf.data, nullptr, &active_host_buf.ready_event);
             queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
             active_host_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_host_buf);
 
@@ -508,20 +508,23 @@ namespace rand_gpu
 {
     RNG::RNG(rand_gpu_algorithm algorithm, size_t n_buffers, size_t multi)
     :   
-        d_ptr_(make_unique<RNG_private>(n_buffers, multi, algorithm, false))
+        d_ptr_(new RNG_private(n_buffers, multi, algorithm, false))
     {
     }
 
     RNG::RNG(unsigned long seed, rand_gpu_algorithm algorithm, size_t n_buffers, size_t multi)
     :   
-        d_ptr_(make_unique<RNG_private>(n_buffers, multi, algorithm, true, seed))
+        d_ptr_(new RNG_private(n_buffers, multi, algorithm, true, seed))
     {
     }
 
     RNG::RNG(RNG&&) = default;
     RNG& RNG::operator=(RNG&&) = default;
 
-    RNG::~RNG() = default;
+    RNG::~RNG()
+    {
+        delete d_ptr_;
+    }
 
     template <typename T>
     T RNG::get_random()

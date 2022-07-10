@@ -11,7 +11,6 @@
 
 #pragma once
 
-#include <memory>
 #include <cstdint>
 #include <cstddef>
 #include "rand_gpu.h"
@@ -88,7 +87,7 @@ namespace rand_gpu
         RNG& operator=(RNG&&);
 
     private:
-        std::unique_ptr<RNG_private> d_ptr_;
+        RNG_private *d_ptr_;
     };
 
     /**
