@@ -117,25 +117,25 @@ size_t rand_gpu_memory();
  * @brief Returns next random number.
  * @param rng RNG to retrieve the random number from
  */
-unsigned long rand_gpu_u64(rand_gpu_rng *rng);
+uint64_t rand_gpu_u64(rand_gpu_rng *rng);
 
 /**
  * @brief Returns next random number.
  * @param rng RNG to retrieve the random number from
  */
-unsigned int rand_gpu_u32(rand_gpu_rng *rng);
+uint32_t rand_gpu_u32(rand_gpu_rng *rng);
 
 /**
  * @brief Returns next random number.
  * @param rng RNG to retrieve the random number from
  */
-unsigned short rand_gpu_u16(rand_gpu_rng *rng);
+uint16_t rand_gpu_u16(rand_gpu_rng *rng);
 
 /**
  * @brief Returns next random number.
  * @param rng RNG to retrieve the random number from
  */
-unsigned char rand_gpu_u8(rand_gpu_rng *rng);
+uint8_t rand_gpu_u8(rand_gpu_rng *rng);
 
 
 /**

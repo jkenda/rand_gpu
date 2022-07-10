@@ -29,38 +29,99 @@
 #include "../include/cl.hpp"
 #include "../kernel.hpp"
 
-
-#define STATE_SIZE_KISS09 (4 * sizeof(cl_ulong))
-#define STATE_SIZE_LCG12864 (2 * sizeof(cl_ulong))
-#define STATE_SIZE_LFIB (17 * sizeof(cl_ulong) + 2 * sizeof(cl_char))
-#define STATE_SIZE_MRG63K3A (6 * sizeof(cl_long))
-#define STATE_SIZE_MSWS (max(sizeof(cl_ulong) + 2 * sizeof(cl_uint2), sizeof(ulong)))
-#define STATE_SIZE_MT19937 (624 * sizeof(cl_uint) + sizeof(cl_int))
-#define STATE_SIZE_MWC64X (max(sizeof(cl_ulong), 2 * sizeof(cl_uint)))
-#define STATE_SIZE_PCG6432 (sizeof(cl_ulong))
-#define STATE_SIZE_PHILOX2X32_10 (max(sizeof(cl_ulong), sizeof(cl_uint)))
-#define STATE_SIZE_RAN2 (35 * sizeof(cl_int))
-#define STATE_SIZE_TINYMT64 (3 * sizeof(cl_ulong) + 2 * sizeof(cl_uint))
-#define STATE_SIZE_TYCHE (max(4 * sizeof(cl_uint), sizeof(cl_ulong)))
-#define STATE_SIZE_TYCHE_I (max(4 * sizeof(cl_uint), sizeof(cl_ulong)))
-#define STATE_SIZE_WELL512 (17 * sizeof(cl_uint))
-#define STATE_SIZE_XORSHIFT6432STAR (sizeof(cl_ulong))
-
-#define FLOAT_MULTI (1.0 / UINT32_MAX)
-#define FLOAT_MULTI_MRG63K3A 1.0842021724855051562312e-19f
-#define FLOAT_MULTI_MT19937 2.3283064365386962890625e-10f
-#define FLOAT_MULTI_MWC64X 2.3283064365386963e-10f
-#define FLOAT_MULTI_PCG6432 2.3283064365386963e-10f
-#define FLOAT_MULTI_RAN2 4.6566128752457969230960e-10f
-#define FLOAT_MULTI_WELL512 2.3283064365386963e-10f
-#define FLOAT_MULTI_XORSHIFT6432STAR 2.3283064365386963e-10f
-
-#define DOUBLE_MULTI (1.0 / UINT64_MAX)
-#define DOUBLE_MULTI_MRG63K3A 1.0842021724855051562311819e-19
-#define DOUBLE_MULTI_RAN2 2.1684043469904927853807e-19
-
 using namespace std;
 using chrono::duration_cast, chrono::nanoseconds, chrono::system_clock;
+
+static const size_t state_sizes[] = {
+    4 * sizeof(cl_ulong),                                        // KISS09,
+    2 * sizeof(cl_ulong),                                        // LCG12864,
+    17 * sizeof(cl_ulong) + 2 * sizeof(cl_char),                 // LFIB,
+    6 * sizeof(cl_long),                                         // MRG63K3A,
+    max(sizeof(cl_ulong) + 2 * sizeof(cl_uint2), sizeof(ulong)), // MSWS,
+    624 * sizeof(cl_uint) + sizeof(cl_int),                      // MT19937,
+    max(sizeof(cl_ulong), 2 * sizeof(cl_uint)),                  // MWC64X,
+    sizeof(cl_ulong),                                            // PCG6432,
+    max(sizeof(cl_ulong), sizeof(cl_uint)),                      // PHILOX2X32_10,
+    35 * sizeof(cl_int),                                         // RAN2,
+    3 * sizeof(cl_ulong) + 2 * sizeof(cl_uint),                  // TINYMT64,
+    max(4 * sizeof(cl_uint), sizeof(cl_ulong)),                  // TYCHE,
+    max(4 * sizeof(cl_uint), sizeof(cl_ulong)),                  // TYCHE_I,
+    17 * sizeof(cl_uint),                                        // WELL512,
+    sizeof(cl_ulong),                                            // XORSHIFT6432STAR,
+};
+
+static const char *INIT_KERNEL_NAMES[] = {
+    "kiss09_init",           // KISS09,
+    "lcg12864_init",         // LCG12864,
+    "lfib_init",             // LFIB,
+    "mrg63k3a_init",         // MRG63K3A,
+    "msws_init",             // MSWS,
+    "mt19937_init",          // MT19937,
+    "mwc64x_init",           // MWC64X,
+    "pcg6432_init",          // PCG6432,
+    "philox2x32_10_init",    // PHILOX2X32_10,
+    "ran2_init",             // RAN2,
+    "tinymt64_init",         // TINYMT64,
+    "tyche_init",            // TYCHE,
+    "tyche_i_init",          // TYCHE_I,
+    "well512_init",          // WELL512,
+    "xorshift6432star_init", // XORSHIFT6432STAR,
+};
+
+static const char *GENERATE_KERNEL_NAMES[] = {
+    "kiss09_generate",           // KISS09,
+    "lcg12864_generate",         // LCG12864,
+    "lfib_generate",             // LFIB,
+    "mrg63k3a_generate",         // MRG63K3A,
+    "msws_generate",             // MSWS,
+    "mt19937_generate",          // MT19937,
+    "mwc64x_generate",           // MWC64X,
+    "pcg6432_generate",          // PCG6432,
+    "philox2x32_10_generate",    // PHILOX2X32_10,
+    "ran2_generate",             // RAN2,
+    "tinymt64_generate",         // TINYMT64,
+    "tyche_generate",            // TYCHE,
+    "tyche_i_generate",          // TYCHE_I,
+    "well512_generate",          // WELL512,
+    "xorshift6432star_generate", // XORSHIFT6432STAR,
+};
+
+static const float FLOAT_MULTIPLIERS[] = {
+    (1.0f / UINT32_MAX),            // KISS09,
+    (1.0f / UINT32_MAX),            // LCG12864,
+    (1.0f / UINT32_MAX),            // LFIB,
+    (1.0f / UINT32_MAX),            // MRG63K3A,
+    (1.0f / UINT32_MAX),            // MSWS,
+    2.3283064365386962890625e-10f, // MT19937,
+    2.3283064365386963e-10f,       // MWC64X,
+    2.3283064365386963e-10f,       // PCG6432,
+    (1.0f / UINT32_MAX),            // PHILOX2X32_10,
+    (1.0f / UINT32_MAX),            // RAN2,
+    (1.0f / UINT32_MAX),            // TINYMT64,
+    (1.0f / UINT32_MAX),            // TYCHE,
+    (1.0f / UINT32_MAX),            // TYCHE_I,
+    2.3283064365386963e-10f,       // WELL512,
+    2.3283064365386963e-10f,       // XORSHIFT6432STAR,
+};
+
+static const float DOUBLE_MULTIPLIERS[] = {
+    (1.0 / UINT64_MAX),              // KISS09,
+    (1.0 / UINT64_MAX),              // LCG12864,
+    (1.0 / UINT64_MAX),              // LFIB,
+    (1.0 / UINT64_MAX),              // MRG63K3A,
+    (1.0 / UINT64_MAX),              // MSWS,
+    5.4210108624275221700372640e-20, // MT19937,
+    (1.0 / UINT64_MAX),              // MWC64X,
+    (1.0 / UINT64_MAX),              // PCG6432,
+    (1.0 / UINT64_MAX),              // PHILOX2X32_10,
+    (1.0 / UINT64_MAX),              // RAN2,
+    (1.0 / UINT64_MAX),              // TINYMT64,
+    (1.0 / UINT64_MAX),              // TYCHE,
+    (1.0 / UINT64_MAX),              // TYCHE_I,
+    (1.0 / UINT64_MAX),              // WELL512,
+    (1.0 / UINT64_MAX),              // XORSHIFT6432STAR,
+};
+
 
 struct Buffer
 {
@@ -111,8 +172,8 @@ struct RNG_private
     size_t _buffer_misses = 0;
     float _init_time;
 
-    float _float_multi = FLOAT_MULTI;
-    double _double_multi = DOUBLE_MULTI;
+    float _float_multi = (1.0 / UINT32_MAX);
+    double _double_multi = (1.0 / UINT64_MAX);
 
     RNG_private(size_t n_buffers = 2, size_t multi = 1, rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE, 
         bool use_custom_seed = false, const unsigned long custom_seed = 0)
@@ -201,92 +262,11 @@ struct RNG_private
         mem_all += _n_buffers * _buffer_size;
 
         // differentiate algorithms
-        const char *name_init = "", *name_generate = "";
-        size_t state_size = STATE_SIZE_MT19937;
-
-        switch (algorithm)
-        {
-        case RAND_GPU_ALGORITHM_KISS09:
-            name_init = "kiss09_init";
-            name_generate = "kiss09_generate";
-            state_size = STATE_SIZE_KISS09;
-            break;
-        case RAND_GPU_ALGORITHM_LCG12864:
-            name_init = "lcg12864_init";
-            name_generate = "lcg12864_generate";
-            state_size = STATE_SIZE_LCG12864;
-            break;
-        case RAND_GPU_ALGORITHM_LFIB:
-            name_init = "lfib_init";
-            name_generate = "lfib_generate";
-            state_size = STATE_SIZE_LFIB;
-            break;
-        case RAND_GPU_ALGORITHM_MRG63K3A:
-            name_init = "mrg63k3a_init";
-            name_generate = "mrg63k3a_generate";
-            state_size = STATE_SIZE_MRG63K3A;
-            break;
-        case RAND_GPU_ALGORITHM_MSWS:
-            name_init = "msws_init";
-            name_generate = "msws_generate";
-            state_size = STATE_SIZE_MSWS;
-            break;
-        case RAND_GPU_ALGORITHM_MT19937:
-            name_init = "mt19937_init";
-            name_generate = "mt19937_generate";
-            state_size = STATE_SIZE_MT19937;
-            _float_multi = FLOAT_MULTI_MT19937;
-            break;
-        case RAND_GPU_ALGORITHM_MWC64X:
-            name_init = "mwc64x_init";
-            name_generate = "mwc64x_generate";
-            state_size = STATE_SIZE_MWC64X;
-            _float_multi = FLOAT_MULTI_MWC64X;
-            break;
-        case RAND_GPU_ALGORITHM_PCG6432:
-            name_init = "pcg6432_init";
-            name_generate = "pcg6432_generate";
-            state_size = STATE_SIZE_PCG6432;
-            _float_multi = FLOAT_MULTI_PCG6432;
-            break;
-        case RAND_GPU_ALGORITHM_PHILOX2X32_10:
-            name_init = "philox2x32_10_init";
-            name_generate = "philox2x32_10_generate";
-            state_size = STATE_SIZE_PHILOX2X32_10;
-            break;
-        case RAND_GPU_ALGORITHM_RAN2:
-            name_init = "ran2_init";
-            name_generate = "ran2_generate";
-            state_size = STATE_SIZE_RAN2;
-            break;
-        case RAND_GPU_ALGORITHM_TINYMT64:
-            name_init = "tinymt64_init";
-            name_generate = "tinymt64_generate";
-            state_size = STATE_SIZE_TINYMT64;
-            break;
-        case RAND_GPU_ALGORITHM_TYCHE_I:
-            name_init = "tyche_i_init";
-            name_generate = "tyche_i_generate";
-            state_size = STATE_SIZE_TYCHE_I;
-            break;
-        case RAND_GPU_ALGORITHM_TYCHE:
-            name_init = "tyche_init";
-            name_generate = "tyche_generate";
-            state_size = STATE_SIZE_TYCHE;
-            break;
-        case RAND_GPU_ALGORITHM_WELL512:
-            name_init = "well512_init";
-            name_generate = "well512_generate";
-            state_size = STATE_SIZE_WELL512;
-            _float_multi = FLOAT_MULTI_WELL512;
-            break;
-        case RAND_GPU_ALGORITHM_XORSHIFT6432STAR:
-            name_init = "xorshift6432star_init";
-            name_generate = "xorshift6432star_generate";
-            state_size = STATE_SIZE_XORSHIFT6432STAR;
-            _float_multi = FLOAT_MULTI_XORSHIFT6432STAR;
-            break;
-        }
+        const char *name_init = INIT_KERNEL_NAMES[algorithm];
+        const char *name_generate = GENERATE_KERNEL_NAMES[algorithm];
+        size_t state_size = state_sizes[algorithm];
+        _float_multi = FLOAT_MULTIPLIERS[algorithm];
+        _double_multi = DOUBLE_MULTIPLIERS[algorithm];
 
         // resize host buffers, create device buffers
         state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _global_size[0] * state_size);
@@ -318,7 +298,7 @@ struct RNG_private
                 {
                     seeds.emplace_back(s());
                 }
-                cl::Buffer cl_seeds(context, seeds.begin(), seeds.end(), true, true);
+                cl::Buffer cl_seeds(queue, seeds.begin(), seeds.end(), true, false);
                 k_init.setArg(1, cl_seeds);
                 queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size[0]);
             }
@@ -480,20 +460,20 @@ void rand_gpu_delete(rand_gpu_rng *rng)
     delete (RNG_private *) rng;
 }
 
-size_t rand_gpu_buffer_size(rand_gpu_rng *rng) { return ((RNG_private *) rng)->buffer_size(); }
-size_t rand_gpu_buf_misses(rand_gpu_rng *rng) { return ((RNG_private *) rng)->buffer_misses(); }
-float rand_gpu_init_time(rand_gpu_rng *rng) { return ((RNG_private *) rng)->init_time(); }
+size_t rand_gpu_buffer_size(rand_gpu_rng *rng) { return static_cast<RNG_private *>(rng)->buffer_size(); }
+size_t rand_gpu_buf_misses(rand_gpu_rng *rng)  { return static_cast<RNG_private *>(rng)->buffer_misses(); }
+float  rand_gpu_init_time(rand_gpu_rng *rng)   { return static_cast<RNG_private *>(rng)->init_time(); }
 size_t rand_gpu_memory() { return rand_gpu::memory_usage(); }
 
 
-unsigned long  rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<unsigned long>(); }
-unsigned int   rand_gpu_u32(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<unsigned int>(); }
-unsigned short rand_gpu_u16(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<unsigned short>(); }
-unsigned char  rand_gpu_u8(rand_gpu_rng *rng)  { return ((RNG_private *) rng)->get_random<unsigned char>();  }
+uint64_t rand_gpu_u64(rand_gpu_rng *rng) { return static_cast<RNG_private *>(rng)->get_random<uint64_t>(); }
+uint32_t rand_gpu_u32(rand_gpu_rng *rng) { return static_cast<RNG_private *>(rng)->get_random<uint32_t>(); }
+uint16_t rand_gpu_u16(rand_gpu_rng *rng) { return static_cast<RNG_private *>(rng)->get_random<uint16_t>(); }
+uint8_t  rand_gpu_u8(rand_gpu_rng *rng)  { return static_cast<RNG_private *>(rng)->get_random<uint8_t>();  }
 
-float       rand_gpu_float(rand_gpu_rng *rng)       { return ((RNG_private *) rng)->get_random<float>();       }
-double      rand_gpu_double(rand_gpu_rng *rng)      { return ((RNG_private *) rng)->get_random<double>();      }
-long double rand_gpu_long_double(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<long double>(); }
+float       rand_gpu_float(rand_gpu_rng *rng)       { return static_cast<RNG_private *>(rng)->get_random<float>();       }
+double      rand_gpu_double(rand_gpu_rng *rng)      { return static_cast<RNG_private *>(rng)->get_random<double>();      }
+long double rand_gpu_long_double(rand_gpu_rng *rng) { return static_cast<RNG_private *>(rng)->get_random<long double>(); }
 
 const char *rand_gpu_algorithm_name(rand_gpu_algorithm algorithm, bool long_name) { return rand_gpu::algorithm_name(algorithm, long_name); }
 

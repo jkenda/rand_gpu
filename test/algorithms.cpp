@@ -17,7 +17,7 @@ int main()
     for (int i = RAND_GPU_ALGORITHM_KISS09; i <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; i++)
     {
         rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(i);
-        rand_gpu::RNG rng(algorithm, 2, 1);
+        rand_gpu::RNG rng(0, algorithm, 2, 1);
         cout << rand_gpu::algorithm_name(algorithm, true) << ":\n";
         cout << "init time: " << rng.init_time() << " ms\n";
 
@@ -50,7 +50,7 @@ int main()
     for (int i = RAND_GPU_ALGORITHM_KISS09; i <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; i++)
     {
         rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(i);
-        rand_gpu::RNG rng(algorithm, 8, 32);
+        rand_gpu::RNG rng(0, algorithm, 8, 32);
 
         start = system_clock::now();
             
