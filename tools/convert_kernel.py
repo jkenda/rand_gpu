@@ -2,6 +2,7 @@
 
 import sys
 import os
+import re
 
 if len(sys.argv) < 3:
     exit(1)
@@ -55,6 +56,9 @@ for line in src:
 
     dst += f'"{line}"\n'
 
+dst = dst.replace("__global", "global")
+dst = dst.replace("__kernel", "kernel")
+dst = re.sub(" +", " ", dst)
 dst += ";\n"
 
 with open(sys.argv[2], "w") as f:
