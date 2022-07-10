@@ -110,7 +110,7 @@ int main()
         for (size_t multi = 1; multi <= 64; multi *= 2)
         {
             srand(time(NULL));
-            rand_gpu::RNG rng(n_buffers, multi);
+            rand_gpu::RNG rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
 
             for (uint32_t percent_calc = 0; percent_calc <= 90; percent_calc += 10)
             {

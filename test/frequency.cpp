@@ -21,7 +21,7 @@ int main()
         unordered_map<uint32_t, size_t> frequency_l;
         frequency_l.reserve(UINT16_MAX);
 
-        rand_gpu::RNG rng(8, 256);
+        rand_gpu::RNG rng(RAND_GPU_ALGORITHM_TYCHE, 8, 256);
 
         #pragma omp single
         cout << "counting...";

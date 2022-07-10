@@ -26,7 +26,7 @@ int main(int argc, char **argv)
 
     auto start = system_clock::now();
 
-    rand_gpu::RNG rng(n_buffers, multi);
+    rand_gpu::RNG rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
 
     long cnt = 0;
 

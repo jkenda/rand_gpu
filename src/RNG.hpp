@@ -12,6 +12,8 @@
 #pragma once
 
 #include <memory>
+#include <cstdint>
+#include <cstddef>
 #include "rand_gpu.h"
 
 // forward declaration of the private class
@@ -26,11 +28,21 @@ namespace rand_gpu
         /**
          * @brief Construct a new RNG object
          * 
-         * @param seed Custom seed
+         * @param algorithm Algorithm for the RNG
+         * @param n_buffers Number of buffers for storing random numbers
          * @param multi buffer size multiplier
          */
-        RNG(size_t n_buffers = 2, size_t multi = 1, rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE,
-            unsigned long seed = 0);
+        RNG(rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE, size_t n_buffers = 2, size_t multi = 1);
+
+        /**
+         * @brief Construct a new RNG object
+         * 
+         * @param seed Custom seed
+         * @param algorithm Algorithm for the RNG
+         * @param n_buffers Number of buffers for storing random numbers
+         * @param multi buffer size multiplier
+         */
+        RNG(uint64_t seed, rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE, size_t n_buffers = 2, size_t multi = 1);
 
         /**
          * @brief Destroy the RNG object
@@ -86,5 +98,5 @@ namespace rand_gpu
      */
     size_t memory_usage();
 
-    const char *algorithm_name(rand_gpu_algorithm algorithm);
+    const char *algorithm_name(rand_gpu_algorithm algorithm, bool long_name = false);
 }

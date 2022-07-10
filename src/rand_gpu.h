@@ -18,6 +18,8 @@ extern "C" {
 #endif
 
 #include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 
 typedef void rand_gpu_rng;
@@ -54,19 +56,23 @@ rand_gpu_rng *rand_gpu_new_default();
 /**
  * @brief Initializes a new random number generator.
  * 
- * @param buffer_multi 
+ * @param algorithm Algorithm for the RNG
+ * @param n_buffers Number of buffers for storing random numbers
+ * @param buffer_multi Buffer size multiplier
  * @return New RNG 
  */
-rand_gpu_rng *rand_gpu_new(size_t n_buffers, size_t buffer_multi, enum rand_gpu_algorithm algorithm);
+rand_gpu_rng *rand_gpu_new(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
 
 /**
  * @brief Initializes a new random number generator.
  * 
- * @param buffer_multi Buffer size multiplier
  * @param seed Custom seed
+ * @param algorithm Algorithm for the RNG
+ * @param n_buffers Number of buffers for storing random numbers
+ * @param buffer_multi Buffer size multiplier
  * @return New RNG
  */
-rand_gpu_rng *rand_gpu_new_with_seed(size_t n_buffers, size_t buffer_multi, enum rand_gpu_algorithm algorithm, unsigned long seed);
+rand_gpu_rng *rand_gpu_new_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
 
 /**
  * @brief Deletes the RNG.
@@ -98,7 +104,7 @@ float rand_gpu_init_time(rand_gpu_rng *rng);
  * @param algorithm enum of the algorithm
  * @return const char* name of the algorithm
  */
-const char *rand_gpu_algorithm_name(enum rand_gpu_algorithm algorithm);
+const char *rand_gpu_algorithm_name(enum rand_gpu_algorithm algorithm, bool long_name);
 
 /**
  * @brief Returns number of bytes occupied by all RNGs.

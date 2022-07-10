@@ -16,7 +16,7 @@ void print_numbers(rand_gpu::RNG &rng, const size_t num, const char *name)
 
 int main()
 {
-    rand_gpu::RNG rng(4, 1);
+    rand_gpu::RNG rng;
 
     print_numbers<uint8_t>(rng, 500, "u8");
     print_numbers<int8_t>(rng, 500, "i8");
