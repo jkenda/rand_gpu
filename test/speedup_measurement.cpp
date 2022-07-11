@@ -65,7 +65,7 @@ uint64_t num_generated_cpu_cpp(const seconds duration, const uint32_t percent_ca
     return num_generated;
 }
 
-uint64_t num_generated_gpu(const seconds duration, const uint32_t percent_calc, rand_gpu::RNG &rng)
+uint64_t num_generated_gpu(const seconds duration, const uint32_t percent_calc, rand_gpu::RNG<RAND_GPU_ALGORITHM_TYCHE> &rng)
 {
     const uint32_t percent_gen = 100 - percent_calc;
     size_t num_generated = 0;
@@ -110,7 +110,7 @@ int main()
         for (size_t multi = 1; multi <= 64; multi *= 2)
         {
             srand(time(NULL));
-            rand_gpu::RNG rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
+            rand_gpu::RNG<RAND_GPU_ALGORITHM_TYCHE> rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
 
             for (uint32_t percent_calc = 0; percent_calc <= 90; percent_calc += 10)
             {

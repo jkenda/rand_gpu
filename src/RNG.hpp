@@ -15,15 +15,22 @@
 #include <cstddef>
 #include "rand_gpu.h"
 
-// forward declaration of the private class
-class RNG_private;
+// forward declaration of the hidden struct
+struct RNG_private;
 
 
 namespace rand_gpu
 {
+    template <rand_gpu_algorithm A = RAND_GPU_ALGORITHM_TYCHE>
     class RNG
     {
     public:
+        /**
+         * @brief Construct a new RNG object
+         * 
+         */
+        RNG();
+
         /**
          * @brief Construct a new RNG object
          * 
@@ -31,7 +38,7 @@ namespace rand_gpu
          * @param n_buffers Number of buffers for storing random numbers
          * @param multi buffer size multiplier
          */
-        RNG(rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE, size_t n_buffers = 2, size_t multi = 1);
+        RNG(size_t n_buffers, size_t multi);
 
         /**
          * @brief Construct a new RNG object
@@ -41,7 +48,7 @@ namespace rand_gpu
          * @param n_buffers Number of buffers for storing random numbers
          * @param multi buffer size multiplier
          */
-        RNG(uint64_t seed, rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE, size_t n_buffers = 2, size_t multi = 1);
+        RNG(uint64_t seed, size_t n_buffers, size_t multi);
 
         /**
          * @brief Destroy the RNG object
@@ -51,12 +58,11 @@ namespace rand_gpu
 
         /**
          * @brief Returns next random number.
-         *        DO NOT MIX TESTED AND UNTESTED TYPES!
          * 
          * @tparam T type of random number to be returned - implemented for all primitive types, 
          *         however, only 32- and 64-bit numbers have been tested for true randomness. 
          */
-        template <typename T = unsigned long>
+        template <typename T = uint32_t>
         T get_random();
 
         /**

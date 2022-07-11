@@ -47,7 +47,7 @@ float pi_lib(size_t n_buffers, size_t multi, int nthreads)
 
     #pragma omp parallel num_threads(nthreads)
     {
-        rand_gpu::RNG rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
+        rand_gpu::RNG rng(n_buffers, multi);
 
         uint_fast64_t cnt_l = 0;
 

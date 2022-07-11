@@ -40,8 +40,8 @@ int main()
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     for (uint32_t i = 0; i < SAMPLES; i++) {
-        (float) rand() / RAND_MAX;
-        (float) rand() / RAND_MAX;
+        rand() / (float) RAND_MAX;
+        rand() / (float) RAND_MAX;
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <chrono>
 
-#define SAMPLES (500000000UL)
+#define SAMPLES (1000000000UL)
 
 using std::chrono::system_clock;
 using std::chrono::duration_cast;
@@ -12,32 +12,73 @@ using std::chrono::microseconds;
 
 using namespace std;
 
+template <int I>
+void print()
+{
+    print<I-1>();
+
+    constexpr rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(I);
+    rand_gpu::RNG<algorithm> rng(0, 2, 1);
+    cout << rand_gpu::algorithm_name(algorithm, true) << ":\n";
+    cout << "init time: " << rng.init_time() << " ms\n";
+
+    for (size_t j = 0; j < 256; j++)
+    {
+        cout << std::to_string(rng.template get_random<uint8_t>()) << ' ';
+    }
+    cout << "\n\n";
+}
+
+template<>
+void print<-1>()
+{
+}
+
+template <int I>
+void time_pi(float time_std)
+{
+    time_pi<I-1>(time_std);
+
+    constexpr rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(I);
+    rand_gpu::RNG<algorithm> rng(0, 8, 32);
+
+    auto start = system_clock::now();
+    long cnt = 0;
+
+    for (uint_fast64_t i = 0; i < SAMPLES; i++) {
+        float a = rng.template get_random<float>();
+        float b = rng.template get_random<float>();
+        if (a*a + b*b < 1.0f) {
+            cnt++;
+        }
+    }
+    float pi = cnt / (double) SAMPLES * 4;
+
+    float time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
+    cout << "pi ≃ " << pi << " (+-" << abs(pi - M_PI) << "), ";
+    cout << "speedup = " << time_std / time_lib << ", ";
+    cout << rng.buffer_misses() << " misses - ";
+    cout << rand_gpu::algorithm_name(algorithm) << '\n';
+}
+
+template <>
+void time_pi<-1>(float time_std)
+{
+}
+
 int main()
 {
-    for (int i = RAND_GPU_ALGORITHM_KISS09; i <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; i++)
-    {
-        rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(i);
-        rand_gpu::RNG rng(0, algorithm, 2, 1);
-        cout << rand_gpu::algorithm_name(algorithm, true) << ":\n";
-        cout << "init time: " << rng.init_time() << " ms\n";
-
-        for (size_t j = 0; j < 256; j++)
-        {
-            cout << std::to_string(rng.get_random<uint8_t>()) << ' ';
-        }
-        cout << "\n\n";
-    }
-
+    print<RAND_GPU_ALGORITHM_XORSHIFT6432STAR>();
 
     long cnt = 0;
 
-    srand(time(NULL));
+    srand(0);
 
     auto start = system_clock::now();
 
-    for (unsigned long i = 0; i < SAMPLES; i++) {
-        float a = (float) rand() / RAND_MAX;
-        float b = (float) rand() / RAND_MAX;
+    for (uint_fast64_t i = 0; i < SAMPLES; i++) {
+        float a = rand() / (float) RAND_MAX;
+        float b = rand() / (float) RAND_MAX;
         if (a*a + b*b < 1.0f) {
             cnt++;
         }
@@ -47,29 +88,5 @@ int main()
 
     float time_std = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
 
-    for (int i = RAND_GPU_ALGORITHM_KISS09; i <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; i++)
-    {
-        rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(i);
-        rand_gpu::RNG rng(0, algorithm, 8, 32);
-
-        start = system_clock::now();
-            
-        long cnt = 0;
-
-        for (unsigned long i = 0; i < SAMPLES; i++) {
-            float a = rng.get_random<float>();
-            float b = rng.get_random<float>();
-            if (a*a + b*b < 1.0f) {
-                cnt++;
-            }
-        }
-        pi = cnt / (double) SAMPLES * 4;
-
-        float time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
-
-        cout << "pi ≃ " << pi << " (+-" << abs(pi - M_PI) << "), ";
-        cout << "speedup = " << time_std / time_lib << ", ";
-        cout << rng.buffer_misses() << " misses - ";
-        cout << rand_gpu::algorithm_name(algorithm) << '\n';
-    }
+    time_pi<RAND_GPU_ALGORITHM_XORSHIFT6432STAR>(time_std);
 }
