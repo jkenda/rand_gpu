@@ -45,7 +45,7 @@ struct Buffer
 };
 
 
-static const size_t state_sizes[] = {
+static const size_t STATE_SIZES[] = {
     4 * sizeof(cl_ulong),                                        // KISS09,
     2 * sizeof(cl_ulong),                                        // LCG12864,
     17 * sizeof(cl_ulong) + 2 * sizeof(cl_char),                 // LFIB,
@@ -222,7 +222,7 @@ struct RNG_private
         mem_all += _n_buffers * _buffer_size;
 
         // resize host buffers, create device buffers
-        state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _global_size[0] * state_sizes[algorithm]);
+        state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _global_size[0] * STATE_SIZES[algorithm]);
         device_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, _buffer_size);
         vector<cl::Buffer> temp_buffers(_n_buffers-1, cl::Buffer(context, CL_MEM_WRITE_ONLY, _buffer_size));
         for (Buffer &buf : _host_buffers)
