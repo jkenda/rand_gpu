@@ -1,6 +1,6 @@
 #include <iostream>
 #include <random>
-#include "../src/RNG.hpp"
+#include "../include/RNG.hpp"
 #include "Timer.hpp"
 
 #define NTHREADS 16

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <stdint.h>
-#include "../src/rand_gpu.h"
+#include "../include/rand_gpu.h"
 
 int main()
 {

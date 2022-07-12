@@ -9,8 +9,8 @@
  * 
  */
 
-#include "RNG.hpp"
-#include "rand_gpu.h"
+#include "../include/RNG.hpp"
+#include "../include/rand_gpu.h"
 
 #include <cstdint>
 #include <vector>
@@ -26,7 +26,7 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_TARGET_OPENCL_VERSION 120
 #define __CL_ENABLE_EXCEPTIONS
-#include "../include/cl.hpp"
+#include "include/cl.hpp"
 #include "../kernel.hpp"
 
 using namespace std;
@@ -99,38 +99,42 @@ static const char *GENERATE_KERNEL_NAMES[] = {
     "xorshift6432star_generate", // XORSHIFT6432STAR,
 };
 
+static const float FLOAT_MULTIPLIER = 1.0f / static_cast<float>(UINT32_MAX);
+static const double DOUBLE_MULTIPLIER = 1.0 / static_cast<double>(UINT64_MAX);
+static const long double LONG_DOUBLE_MULTIPLIER = 1.0l / static_cast<long double>(UINT64_MAX);
 
-mutex constructor_lock;
-mutex init_lock;
-mutex queue_lock;
 
-vector<cl::Device> devices;
-size_t device_i = 0;
-atomic<size_t> mem_all = 0;
-bool initialized = false;
+static mutex __constructor_lock;
+static mutex __init_lock;
+static mutex __queue_lock;
 
-mt19937_64 generator;
-cl::Context context;
-cl::Device  device;
-cl::Program program;
+static vector<cl::Device> __devices;
+static size_t __device_i = 0;
+static atomic<size_t> __mem_all = 0;
+static bool __initialized = false;
 
-cl::NDRange _global_size;
-size_t _buffer_size;
-size_t _buf_limit;
+static mt19937_64 __generator;
+static cl::Context __context;
+static cl::Device  __device;
+static cl::Program __program;
+
+static cl::NDRange __global_size;
+static size_t __buffer_size;
+static size_t __buf_limit;
 
 
 struct RNG_private
 {
-    cl::CommandQueue queue;
-    cl::Kernel k_generate;
-    cl::Buffer state_buf;
-    cl::Buffer device_buffer;
+    cl::CommandQueue _queue;
+    cl::Kernel _k_generate;
+    cl::Buffer _state_buf;
+    cl::Buffer _device_buffer;
 
     const size_t _n_buffers;
     vector<Buffer> _host_buffers;
-    uint_fast8_t active_buf = 0;
+    uint_fast8_t _active_buf = 0;
 
-    size_t buf_offset = sizeof(long double);
+    size_t _buf_offset = sizeof(long double);
 
     size_t _buffer_misses = 0;
     float _init_time;
@@ -145,9 +149,9 @@ struct RNG_private
         auto start = chrono::high_resolution_clock::now();
 
         {
-            lock_guard<mutex> lock(constructor_lock);
+            lock_guard<mutex> lock(__constructor_lock);
 
-            if (!initialized)
+            if (!__initialized)
             {
                 cl::Platform platform;
 
@@ -155,8 +159,8 @@ struct RNG_private
                 try
                 {
                     cl::Platform::get(&platform);
-                    platform.getDevices(CL_DEVICE_TYPE_GPU, &devices);
-                    device = devices[device_i];
+                    platform.getDevices(CL_DEVICE_TYPE_GPU, &__devices);
+                    __device = __devices[__device_i];
                 }
                 catch (const cl::Error& err)
                 {
@@ -165,24 +169,24 @@ struct RNG_private
                 }
 
                 // create context
-                context = cl::Context(devices);
+                __context = cl::Context(__devices);
 
                 // build program
                 cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE, strlen(KERNEL_SOURCE)));
-                program = cl::Program(context, sources);
+                __program = cl::Program(__context, sources);
 
                 try
                 {
-                    program.build(devices);
+                    __program.build(__devices);
                 }
                 catch (const cl::Error& err)
                 {
                     // print buildlog if build failed
-                    for (const cl::Device& dev : devices) 
+                    for (const cl::Device& dev : __devices) 
                     {
-                        if (program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev) != CL_SUCCESS)
+                        if (__program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev) != CL_SUCCESS)
                         {
-                            string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev);
+                            string buildlog = __program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev);
                             cerr << buildlog << '\n';
                             throw err;
                         }
@@ -191,111 +195,109 @@ struct RNG_private
 
                 // initialize host RNG for generating seeds
                 if (!use_custom_seed)
-                    generator = mt19937_64(system_clock::now().time_since_epoch().count());
+                    __generator = mt19937_64(system_clock::now().time_since_epoch().count());
 
                 // get device info
-                uint32_t max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
-                size_t max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
+                uint32_t max_cu = __device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
+                size_t max_wg_size = __device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
 
-                _global_size = cl::NDRange(max(multi, 1LU) * max_cu * max_wg_size);
-                _buffer_size = _global_size[0] * sizeof(cl_ulong);
-                _buf_limit = _buffer_size - sizeof(long double);
+                __global_size = cl::NDRange(max(multi, 1LU) * max_cu * max_wg_size);
+                __buffer_size = __global_size[0] * sizeof(cl_ulong);
+                __buf_limit = __buffer_size - sizeof(long double);
 
-                initialized = true;
+                __initialized = true;
             }
 
             // generate seed
             if (use_custom_seed)
                 seed = custom_seed;
             else
-                seed = generator();
+                seed = __generator();
             
             // distribute devices among instances
-            device = devices[device_i];
-            device_i = (device_i + 1) % devices.size();
+            __device = __devices[__device_i];
+            __device_i = (__device_i + 1) % __devices.size();
 
             // create command queue
-            queue = cl::CommandQueue(context, device);
+            _queue = cl::CommandQueue(__context, __device);
         }
 
         // increase total memory usage counter
-        mem_all += _n_buffers * _buffer_size;
+        __mem_all += _n_buffers * __buffer_size;
 
         // resize host buffers, create device buffers
-        state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _global_size[0] * STATE_SIZES[algorithm]);
-        device_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, _buffer_size);
-        vector<cl::Buffer> temp_buffers(_n_buffers-1, cl::Buffer(context, CL_MEM_WRITE_ONLY, _buffer_size));
+        _state_buf = cl::Buffer(__context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, __global_size[0] * STATE_SIZES[algorithm]);
+        _device_buffer = cl::Buffer(__context, CL_MEM_WRITE_ONLY, __buffer_size);
+        vector<cl::Buffer> temp_buffers(_n_buffers-1, cl::Buffer(__context, CL_MEM_WRITE_ONLY, __buffer_size));
         for (Buffer &buf : _host_buffers)
         {
-            buf.alloc(_buffer_size);
+            buf.alloc(__buffer_size);
         }
 
         // initialize RNG
-        cl::Kernel k_init(program, INIT_KERNEL_NAMES[algorithm]);
+        cl::Kernel k_init(__program, INIT_KERNEL_NAMES[algorithm]);
         cl::Event initialized;
-        k_init.setArg(0, state_buf);
+        k_init.setArg(0, _state_buf);
 
         switch (algorithm)
         {
         case RAND_GPU_ALGORITHM_TYCHE:
         case RAND_GPU_ALGORITHM_TYCHE_I:
             k_init.setArg(1, sizeof(cl_ulong), &seed);
-            queue.enqueueNDRangeKernel(k_init, 0, _global_size);
+            _queue.enqueueNDRangeKernel(k_init, 0, __global_size);
             break;
         default:
             {
                 ranlux48 s(seed);
                 vector<uint64_t> seeds;
-                seeds.reserve(_global_size[0]);
-                for (size_t i = 0; i < _global_size[0]; i++)
+                seeds.reserve(__global_size[0]);
+                for (size_t i = 0; i < __global_size[0]; i++)
                 {
                     seeds.emplace_back(s());
                 }
-                cl::Buffer cl_seeds(queue, seeds.begin(), seeds.end(), true, false);
+                cl::Buffer cl_seeds(_queue, seeds.begin(), seeds.end(), true, false);
                 k_init.setArg(1, cl_seeds);
-                queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size[0]);
+                _queue.enqueueNDRangeKernel(k_init, cl::NullRange, __global_size);
             }
         }
 
         // create kernel
-        k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES[algorithm]);
-        k_generate.setArg(0, state_buf);
+        _k_generate = cl::Kernel(__program, GENERATE_KERNEL_NAMES[algorithm]);
+        _k_generate.setArg(0, _state_buf);
 
         // fill all buffers
         vector<cl::Event> buffers_read(_n_buffers);
 
-        k_generate.setArg(1, device_buffer);
-        queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
-        queue.enqueueReadBuffer(device_buffer, false, 0, _buffer_size, _host_buffers[0].data, nullptr, &buffers_read[0]);
         for (size_t i = 1; i < _n_buffers; i++)
         {
-            k_generate.setArg(1, temp_buffers[i-1]);
-            queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
-            queue.enqueueReadBuffer(temp_buffers[i-1], false, 0, _buffer_size, _host_buffers[i-1].data, nullptr, &buffers_read[i]);
+            _k_generate.setArg(1, temp_buffers[i-1]);
+            _queue.enqueueNDRangeKernel(_k_generate, 0, __global_size);
+            _queue.enqueueReadBuffer(temp_buffers[i-1], false, 0, __buffer_size, _host_buffers[i].data, nullptr, &buffers_read[i]);
         }
+        _k_generate.setArg(1, _device_buffer);
+        _queue.enqueueNDRangeKernel(_k_generate, 0, __global_size);
+        _queue.enqueueReadBuffer(_device_buffer, false, 0, __buffer_size, _host_buffers[0].data, nullptr, &buffers_read[0]);
         cl::Event::waitForEvents(buffers_read);
 
         // generate future numbers
-        k_generate.setArg(1, device_buffer);
-        queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
+        _queue.enqueueNDRangeKernel(_k_generate, 0, __global_size);
 
-        auto end = chrono::high_resolution_clock::now();
-        _init_time = (duration_cast<nanoseconds>(end - start).count() / static_cast<float>(1'000'000));
+        _init_time = (duration_cast<nanoseconds>(chrono::high_resolution_clock::now() - start).count() / static_cast<float>(1'000'000));
     }
 
     ~RNG_private()
     {
-        mem_all -= _n_buffers * _buffer_size;
+        __mem_all -= _n_buffers * __buffer_size;
     }
 
 
     template <typename T>
     T get_random()
     {
-        Buffer &active_host_buf = _host_buffers[active_buf];
+        Buffer &active_host_buf = _host_buffers[_active_buf];
 
         // just switched buffers - wait for buffer to be ready
-        if (buf_offset == 0)
+        if (_buf_offset == 0)
         {
             unique_lock<mutex> lock(active_host_buf.ready_lock);
             if (!active_host_buf.ready) _buffer_misses++;
@@ -304,22 +306,22 @@ struct RNG_private
 
         // retrieve number from buffer
         T num;
-        memcpy(&num, &active_host_buf.data[buf_offset], sizeof(T));
-        buf_offset += sizeof(T);
+        memcpy(&num, &active_host_buf.data[_buf_offset], sizeof(T));
+        _buf_offset += sizeof(T);
 
         // out of numbers in current buffer
-        if (buf_offset >= _buf_limit)
+        if (_buf_offset >= __buf_limit)
         {
             active_host_buf.ready = false;
 
             // enqueue reading data, generating future numbers
-            queue.enqueueReadBuffer(device_buffer, false, 0, _buffer_size, active_host_buf.data, nullptr, &active_host_buf.ready_event);
-            queue.enqueueNDRangeKernel(k_generate, 0, _global_size);
+            _queue.enqueueReadBuffer(_device_buffer, false, 0, __buffer_size, active_host_buf.data, nullptr, &active_host_buf.ready_event);
+            _queue.enqueueNDRangeKernel(_k_generate, 0, __global_size);
             active_host_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_host_buf);
 
             // switch active buffer
-            active_buf = (active_buf + 1) % _n_buffers;
-            buf_offset = 0;
+            _active_buf = (_active_buf + 1) % _n_buffers;
+            _buf_offset = 0;
         }
 
         return num;
@@ -327,7 +329,7 @@ struct RNG_private
 
     size_t buffer_size() const
     {
-        return _buffer_size;
+        return __buffer_size;
     }
 
     size_t buffer_misses() const
@@ -353,7 +355,7 @@ struct RNG_private
 
 size_t mem_usage()
 {
-    return mem_all;
+    return __mem_all;
 }
 
 
@@ -364,25 +366,25 @@ template specialization
 template <>
 float RNG_private::get_random<float>()
 {
-    return get_random<uint32_t>() / static_cast<float>(UINT32_MAX);
+    return FLOAT_MULTIPLIER * get_random<uint32_t>();
 }
 
 template <>
 double RNG_private::get_random<double>()
 {
-    return get_random<uint64_t>() / static_cast<double>(UINT64_MAX);
+    return DOUBLE_MULTIPLIER * get_random<uint64_t>();
 }
 
 template <>
 long double RNG_private::get_random<long double>()
 {
-    return get_random<uint64_t>() / static_cast<long double>(UINT64_MAX);
+    return LONG_DOUBLE_MULTIPLIER * get_random<uint64_t>();
 }
 
 template <>
 bool RNG_private::get_random<bool>()
 {
-    return get_random<uint32_t>() > UINT32_MAX / 2 ? true : false;
+    return get_random<uint32_t>() > static_cast<uint32_t>(UINT32_MAX / 2U) ? true : false;
 }
 
 
@@ -460,15 +462,15 @@ namespace rand_gpu
     }
 
     template <rand_gpu_algorithm A>
-    RNG<A>::RNG(RNG&&) = default;
-    template <rand_gpu_algorithm A>
-    RNG<A>& RNG<A>::operator=(RNG&&) = default;
-
-    template <rand_gpu_algorithm A>
     RNG<A>::~RNG()
     {
         delete d_ptr_;
     }
+
+    template <rand_gpu_algorithm A>
+    RNG<A>::RNG(RNG&&) = default;
+    template <rand_gpu_algorithm A>
+    RNG<A>& RNG<A>::operator=(RNG&&) = default;
 
     template <rand_gpu_algorithm A>
     template <typename T>

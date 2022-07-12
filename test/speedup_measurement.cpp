@@ -1,4 +1,4 @@
-#include "../src/RNG.hpp"
+#include "../include/RNG.hpp"
 #include <chrono>
 #include <random>
 #include <iostream>
@@ -16,7 +16,7 @@ using chrono::system_clock;
 using chrono::high_resolution_clock;
 using chrono::duration_cast;
 
-mt19937 generator(duration_cast<microseconds>(system_clock::now().time_since_epoch()).count());
+mt19937 generator(system_clock::now().time_since_epoch().count());
 
 
 uint64_t num_generated_cpu_c(const seconds duration, const uint32_t percent_calc)

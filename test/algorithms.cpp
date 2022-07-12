@@ -1,4 +1,4 @@
-#include "../src/RNG.hpp"
+#include "../include/RNG.hpp"
 #include <iostream>
 #include <cstdint>
 #include <cmath>

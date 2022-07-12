@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <sys/time.h>
-#include "../src/rand_gpu.h"
+#include "../include/rand_gpu.h"
 
 #define SAMPLES (100000000UL)
 #define ABS(A) ((A) >= 0 ? (A) : -(A))

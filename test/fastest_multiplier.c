@@ -6,7 +6,7 @@
 #include <sys/time.h>
 
 #define RAND_GPU_32
-#include "../src/rand_gpu.h"
+#include "../include/rand_gpu.h"
 
 #define ABS(A) ((A >= 0) ? (A) : -(A))
 #define SAMPLES (1000000000UL)

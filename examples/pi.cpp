@@ -2,7 +2,7 @@
 #include <cmath>
 #include <chrono>
 #include <random>
-#include "../src/RNG.hpp"
+#include "../include/RNG.hpp"
 
 #define SAMPLES (5000000000UL)
 

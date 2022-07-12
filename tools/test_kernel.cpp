@@ -6,7 +6,7 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_TARGET_OPENCL_VERSION 120
 #define __CL_ENABLE_EXCEPTIONS
-#include "../include/cl.hpp"
+#include "../src/include/cl.hpp"
 #include "../kernel.hpp"
 
 using namespace std;

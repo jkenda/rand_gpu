@@ -12,7 +12,7 @@
 
 #include <iostream>
 #include <vector>
-#include "../src/RNG.hpp"
+#include "../include/RNG.hpp"
 
 using namespace std;
 using std::vector;

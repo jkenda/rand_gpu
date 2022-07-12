@@ -1,6 +1,6 @@
 #include <iostream>
 #include <cstdint>
-#include "../src/RNG.hpp"
+#include "../include/RNG.hpp"
 
 using namespace std;
 

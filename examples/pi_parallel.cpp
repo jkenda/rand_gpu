@@ -3,7 +3,7 @@
 #include <random>
 #include <chrono>
 #include <omp.h>
-#include "../src/RNG.hpp"
+#include "../include/RNG.hpp"
 
 #define SAMPLES (10000000000UL)
 

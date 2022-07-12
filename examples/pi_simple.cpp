@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <chrono>
 #include <random>
-#include "../src/RNG.hpp"
+#include "../include/RNG.hpp"
 
 #define SAMPLES (100'000'000UL)
 

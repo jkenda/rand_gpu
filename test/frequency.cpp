@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <mutex>
 #include <omp.h>
-#include "../src/RNG.hpp"
+#include "../include/RNG.hpp"
 
 #define SAMPLES (1'000'000'000)
 

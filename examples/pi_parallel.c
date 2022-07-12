@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <time.h>
-#include "../src/rand_gpu.h"
+#include "../include/rand_gpu.h"
 
 #define SAMPLES (10000000000UL)
 
