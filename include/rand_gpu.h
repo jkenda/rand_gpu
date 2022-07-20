@@ -47,9 +47,7 @@ enum rand_gpu_algorithm
 };
 
 /**
- * @brief Initializes a new random number generator.
- * 
- * @return New RNG with default parameters
+ * @brief Initializes a new random number generator with default parameters.
  */
 rand_gpu_rng *rand_gpu_new_default();
 
@@ -59,7 +57,6 @@ rand_gpu_rng *rand_gpu_new_default();
  * @param algorithm Algorithm for the RNG
  * @param n_buffers Number of buffers for storing random numbers
  * @param buffer_multi Buffer size multiplier
- * @return New RNG 
  */
 rand_gpu_rng *rand_gpu_new(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
 
@@ -70,7 +67,6 @@ rand_gpu_rng *rand_gpu_new(enum rand_gpu_algorithm algorithm, size_t n_buffers, 
  * @param algorithm Algorithm for the RNG
  * @param n_buffers Number of buffers for storing random numbers
  * @param buffer_multi Buffer size multiplier
- * @return New RNG
  */
 rand_gpu_rng *rand_gpu_new_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
 
@@ -80,37 +76,64 @@ rand_gpu_rng *rand_gpu_new_with_seed(uint64_t seed, enum rand_gpu_algorithm algo
  */
 void rand_gpu_delete(rand_gpu_rng *rng);
 
+
 /**
- * @brief Returns buffer size of RNG.
+ * @brief Delete all RNGs.
+ */
+void rand_gpu_delete_all();
+
+/**
+ * @brief Returns buffer size of RNG (equal for all RNGs).
  * @param rng RNG whose buffer size to retrieve
  */
-size_t rand_gpu_buffer_size(rand_gpu_rng *rng);
+size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng);
 
 /**
  * @brief Returns number of times we had to wait for GPU to fill the buffer.
- * @param rng RNG whose misses to retrieve
+ * @param rng RNG whose buffer misses to retrieve
  */
-size_t rand_gpu_buf_misses(rand_gpu_rng *rng);
+size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng);
 
 /**
  * @brief Returns RNG initialization time in ms.
  * @param rng RNG whose init time to retrieve
  */
-float rand_gpu_init_time(rand_gpu_rng *rng);
+float rand_gpu_rng_init_time(const rand_gpu_rng *rng);
+
+/**
+ * @brief Returns average time waiting for GPU is ms
+ * @param rng RNG whose GPU access time to retrieve
+ */
+float rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng);
+
+
+/**
+ * @brief Returns number of bytes occupied by all RNGs.
+ */
+size_t rand_gpu_memory_usage();
+
+/**
+ * @brief Returns number of times we had to wait for GPU to fill the buffer.
+ */
+size_t rand_gpu_buffer_misses();
+
+/**
+ * @brief Return average init time of all RNGs.
+ */
+float rand_gpu_avg_init_time();
+
+/**
+ * @brief Return average GPU transfer time of all RNGs.
+ */
+float rand_gpu_avg_gpu_transfer_time();
 
 /**
  * @brief Returns the name of the algorithm corresponding to the enum.
  * 
  * @param algorithm enum of the algorithm
- * @return const char* name of the algorithm
+ * @param long_name bool the name along with description
  */
-const char *rand_gpu_algorithm_name(enum rand_gpu_algorithm algorithm, bool long_name);
-
-/**
- * @brief Returns number of bytes occupied by all RNGs.
- * @return Allocated memory 
- */
-size_t rand_gpu_memory();
+const char *rand_gpu_algorithm_name(enum rand_gpu_algorithm algorithm, bool description);
 
 
 /**

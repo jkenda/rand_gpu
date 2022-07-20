@@ -27,14 +27,13 @@ int main()
     cl::Device device = devices.at(0);
 
     cl::Context context = cl::Context(devices);
-    size_t len = strlen(KERNEL_SOURCE);
-    cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE, len));
+    cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE, strlen(KERNEL_SOURCE)));
     cl::Program program = cl::Program(context, sources);
 
     try
     {
         program.build(devices, "");
-        cout << "size: " << len << '\n';
+        cout << "size: " << strlen(KERNEL_SOURCE) << '\n';
         cout << "Syntax check succeeded." << '\n';
     }
     catch (const cl::Error& err)
@@ -42,7 +41,7 @@ int main()
         std::string name     = device.getInfo<CL_DEVICE_NAME>();
         std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
         cerr << buildlog << '\n';
-        cout << "size: " << len << " bytes\n";
+        cout << "size: " << strlen(KERNEL_SOURCE) << " bytes\n";
         cerr << "Syntax check failed!" << '\n';
         return 13;
     }

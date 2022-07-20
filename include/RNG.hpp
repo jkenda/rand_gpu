@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <chrono>
 #include "rand_gpu.h"
 
 // forward declaration of the hidden struct
@@ -58,7 +59,6 @@ namespace rand_gpu
 
         /**
          * @brief Returns next random number.
-         * 
          * @tparam T type of random number to be returned - implemented for all primitive types, 
          *         however, only 32- and 64-bit numbers have been tested for true randomness. 
          */
@@ -67,24 +67,23 @@ namespace rand_gpu
 
         /**
          * @brief Returns size of random number buffer in bytes
-         * 
-         * @return size_t size of random number buffer in bytes
          */
-        size_t buffer_size() const;
+        std::size_t buffer_size() const;
 
         /**
          * @brief Returns number of times we had to wait for GPU to fill the buffer.
-         * 
-         * @return size_t number of buffer misses
          */
-        size_t buffer_misses() const;
+        std::size_t buffer_misses() const;
 
         /**
-         * @brief Returns RNG initialization time in ms
-         * 
-         * @return float RNG initialization time in ms
+         * @brief Returns RNG initialization time.
          */
-        float init_time() const;
+        std::chrono::nanoseconds init_time() const;
+
+        /**
+         * @brief Return average GPU transfer time.
+         */
+        std::chrono::nanoseconds avg_gpu_transfer_time() const;
 
         // deleted copy constructor and assignment operator
         RNG(RNG&) = delete;
@@ -98,10 +97,29 @@ namespace rand_gpu
 
     /**
      * @brief Returns memory used by all RNG instances.
-     * 
-     * @return size_t memory used by all RNG instances
      */
-    size_t memory_usage();
+    std::size_t memory_usage();
 
+    /**
+     * @brief Returns number of times we had to wait for GPU to fill the buffer.
+     */
+    std::size_t buffer_misses();
+
+    /**
+     * @brief Return average init time of all RNGs.
+     */
+    std::chrono::nanoseconds avg_init_time();
+
+    /**
+     * @brief Return average GPU transfer time of all RNGs.
+     */
+    std::chrono::nanoseconds avg_gpu_transfer_time();
+
+    /**
+     * @brief Returns the name of the algorithm corresponding to the enum.
+     * 
+     * @param algorithm enum of the algorithm
+     * @param long_name bool the name along with description
+     */
     const char *algorithm_name(rand_gpu_algorithm algorithm, bool long_name = false);
 }

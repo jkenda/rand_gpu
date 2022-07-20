@@ -1,7 +1,7 @@
 CC= gcc # clang
 CPPC= g++ # clang++
-CFLAGS= -O3 -s -Wall -Wpedantic
-CPPFLAGS= --std=c++17 -O3 -s -Wall -Wpedantic
+CFLAGS= -O3 -g -Wall -Wpedantic
+CPPFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
 SLURM_ARGS= --reservation=fri -c2 -G2
 
 # Arnes
@@ -16,7 +16,7 @@ lib: lib/librand_gpu.so
 
 lib/librand_gpu.so: bin/test_kernel RNG.o
 	@mkdir -p lib
-	$(CPPC) $(CPPFLAGS) -shared -o lib/librand_gpu.so RNG.o -lOpenCL
+	$(CPPC) $(CPPFLAGS) -shared -o lib/librand_gpu.so RNG.o -lOpenCL -flto
 
 install: lib/librand_gpu.so
 #	@mkdir -p ~/.local/lib/
@@ -58,8 +58,8 @@ pi_simple: lib/librand_gpu.so examples/pi_simple.c
 
 pi_parallel: lib/librand_gpu.so examples/pi_parallel.cpp
 	@mkdir -p bin/c++
-	$(CC) $(CFLAGS) -Llib -o bin/pi_parallel examples/pi_parallel.c -lstdc++ -lm -lrand_gpu -fopenmp
-	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/pi_parallel examples/pi_parallel.cpp -lstdc++ -lm -lrand_gpu -fopenmp
+	$(CC) $(CFLAGS) -Llib -o bin/pi_parallel examples/pi_parallel.c -lm -lrand_gpu -fopenmp
+	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/pi_parallel examples/pi_parallel.cpp -lm -lrand_gpu -fopenmp
 
 
 algorithms: lib/librand_gpu.so test/algorithms.cpp bin/test_kernel

@@ -3,6 +3,7 @@ bin/
 lib/
 *.o
 output*
+*.csv
 callgrind*
 cachegrind*
 kernel.hpp

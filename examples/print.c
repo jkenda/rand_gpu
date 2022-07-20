@@ -84,5 +84,5 @@ int main()
     }
     printf("\n\n");
 
-    printf("memory usage: %lu bytes\n", rand_gpu_memory());
+    printf("memory usage: %lu bytes\n", rand_gpu_memory_usage());
 }

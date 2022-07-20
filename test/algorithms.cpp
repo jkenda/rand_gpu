@@ -4,13 +4,20 @@
 #include <cmath>
 #include <chrono>
 
-#define SAMPLES (1000000000UL)
+#define SAMPLES (100000000UL)
 
 using std::chrono::system_clock;
 using std::chrono::duration_cast;
 using std::chrono::microseconds;
+using std::chrono::nanoseconds;
 
 using namespace std;
+
+ostream& operator<<(ostream& os, const nanoseconds& nanos)
+{
+    os << (nanos.count() / static_cast<float>(1'000'000)) << " ms";
+    return os;
+}
 
 template <int I>
 void print()
@@ -20,11 +27,11 @@ void print()
     constexpr rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(I);
     rand_gpu::RNG<algorithm> rng(0, 2, 1);
     cout << rand_gpu::algorithm_name(algorithm, true) << ":\n";
-    cout << "init time: " << rng.init_time() << " ms\n";
+    cout << "init time: " << rng.init_time() << '\n';
 
     for (size_t j = 0; j < 256; j++)
     {
-        cout << std::to_string(rng.template get_random<uint8_t>()) << ' ';
+        cout << (short) rng.template get_random<uint8_t>() << ' ';
     }
     cout << "\n\n";
 }
@@ -40,9 +47,11 @@ void time_pi(float time_std)
     time_pi<I-1>(time_std);
 
     constexpr rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(I);
-    rand_gpu::RNG<algorithm> rng(0, 8, 32);
+    printf("%16s: ", rand_gpu::algorithm_name(algorithm)); flush(cout);
 
     auto start = system_clock::now();
+    rand_gpu::RNG<algorithm> rng(0, 8, 32);
+
     long cnt = 0;
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
@@ -57,8 +66,8 @@ void time_pi(float time_std)
     float time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
     cout << "pi ≃ " << pi << " (+-" << abs(pi - M_PI) << "), ";
     cout << "speedup = " << time_std / time_lib << ", ";
-    cout << rng.buffer_misses() << " misses - ";
-    cout << rand_gpu::algorithm_name(algorithm) << '\n';
+    cout << rng.buffer_misses() << " misses, ";
+    cout << "avg. access time: " << rng.avg_gpu_transfer_time() << '\n';
 }
 
 template <>
@@ -89,4 +98,5 @@ int main()
     float time_std = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
 
     time_pi<RAND_GPU_ALGORITHM_XORSHIFT6432STAR>(time_std);
+    cout << "avg. access time: " << rand_gpu::avg_gpu_transfer_time() << '\n';
 }
