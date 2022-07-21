@@ -131,7 +131,7 @@ float rand_gpu_avg_gpu_transfer_time();
  * @brief Returns the name of the algorithm corresponding to the enum.
  * 
  * @param algorithm enum of the algorithm
- * @param long_name bool the name along with description
+ * @param long_name false - return only name, true - return full name and description
  */
 const char *rand_gpu_algorithm_name(enum rand_gpu_algorithm algorithm, bool description);
 

@@ -113,6 +113,7 @@ static const float FLOAT_MULTIPLIER = 1.0f / static_cast<float>(UINT32_MAX);
 static const double DOUBLE_MULTIPLIER = 1.0 / static_cast<double>(UINT64_MAX);
 static const long double LONG_DOUBLE_MULTIPLIER = 1.0l / static_cast<long double>(UINT64_MAX);
 static const float MILLION = static_cast<float>(1'000'000);
+static const size_t N_ALGORITHMS = RAND_GPU_ALGORITHM_XORSHIFT6432STAR - RAND_GPU_ALGORITHM_KISS09 + 1;
 
 
 static mutex __constructor_lock;
@@ -122,15 +123,13 @@ static vector<cl::Device> __devices;
 static size_t __device_i = 0;
 static atomic<size_t> __memory_usage = 0;
 
-static uint32_t __max_cu;
-static size_t __max_wg_size;
-
 static mt19937_64 __generator;
 static cl::Context __context;
-static cl::Program __program;
+static cl::Program __programs[N_ALGORITHMS];
+static bool __program_built[N_ALGORITHMS] = { false };
 
-static atomic<nanoseconds> __sum_init_times_deleted = nanoseconds::zero();
-static atomic<nanoseconds> __sum_avg_transfers_deleted = nanoseconds::zero();
+static atomic<nanoseconds> __sum_init_time_deleted = nanoseconds::zero();
+static atomic<nanoseconds> __sum_avg_transfer_time_deleted = nanoseconds::zero();
 static atomic<size_t> __sum_buffer_misses_deleted = 0;
 static atomic<size_t> __n_deleted_rngs = 0;
 
@@ -144,6 +143,9 @@ struct RNG_private
     cl::Kernel _k_generate;
     cl::Buffer _state_buf;
     cl::Buffer _device_buffer;
+
+    uint32_t _max_cu;
+    size_t _max_wg_size;
 
     cl::NDRange _global_size;
     size_t _buffer_size;
@@ -161,55 +163,6 @@ struct RNG_private
     nanoseconds _gpu_transfer_time_total;
     size_t _n_gpu_transfers;
 
-    static void initialize(cl::Device &device)
-    {
-        cl::Platform platform;
-
-        // get platforms and devices
-        try
-        {
-            cl::Platform::get(&platform);
-            platform.getDevices(CL_DEVICE_TYPE_GPU, &__devices);
-            device = __devices[0];
-        }
-        catch (const cl::Error& err)
-        {
-            cerr << "No openCL platforms/devices found!\n";
-            throw err;
-        }
-
-        // create context
-        __context = cl::Context(__devices);
-
-        // build program
-        cl::Program::Sources sources(1, make_pair(KERNEL_SOURCE, strlen(KERNEL_SOURCE)));
-        __program = cl::Program(__context, sources);
-
-        try
-        {
-            __program.build(__devices);
-        }
-        catch (const cl::Error& err)
-        {
-            // print buildlog if build failed
-            for (const cl::Device& device : __devices) 
-            {
-                if (__program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(device) != CL_SUCCESS)
-                {
-                    string buildlog = __program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-                    cerr << buildlog << '\n';
-                    throw err;
-                }
-            }
-        }
-
-        // initialize host RNG for generating seeds
-        __generator = mt19937_64(system_clock::now().time_since_epoch().count());
-
-        // get device info
-        __max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
-        __max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
-    }
 
     RNG_private(size_t n_buffers = 2, size_t multi = 1, rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE,
         bool use_custom_seed = false, uint64_t custom_seed = 0)
@@ -219,6 +172,7 @@ struct RNG_private
     {
         cl_ulong seed;
         cl::Device device;
+        cl::Program &program = __programs[algorithm];
         auto start = chrono::system_clock::now();
 
         {
@@ -226,7 +180,26 @@ struct RNG_private
 
             if (!__initialized)
             {
-                initialize(device);
+                cl::Platform platform;
+
+                // get platforms and devices
+                try
+                {
+                    cl::Platform::get(&platform);
+                    platform.getDevices(CL_DEVICE_TYPE_GPU, &__devices);
+                }
+                catch (const cl::Error &err)
+                {
+                    cerr << "No openCL platforms/devices found!\n";
+                    throw err;
+                }
+
+                // create context
+                __context = cl::Context(__devices);
+
+                // initialize host RNG for generating seeds
+                __generator = mt19937_64(system_clock::now().time_since_epoch().count());
+
                 __initialized = true;
             }
 
@@ -239,19 +212,48 @@ struct RNG_private
             // distribute devices among instances
             device = __devices[__device_i];
             __device_i = (__device_i + 1) % __devices.size();
+
+            if (!__program_built[algorithm])
+            {
+                // build program
+                program = cl::Program(__context, KERNEL_SOURCE[algorithm]);
+
+                try
+                {
+                    program.build(__devices);
+                }
+                catch (const cl::Error &err)
+                {
+                    // print buildlog if build failed
+                    for (const cl::Device &device : __devices) 
+                    {
+                        if (program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(device) != CL_SUCCESS)
+                        {
+                            string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
+                            cerr << buildlog << '\n';
+                            throw err;
+                        }
+                    }
+                }
+                __program_built[algorithm] = true;
+            }
+
         }
 
         // create command queue
         _queue = cl::CommandQueue(__context, device);
 
-        _global_size = cl::NDRange(max(multi, 1LU) * __max_cu * __max_wg_size);
+        // get device info
+        _max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
+        _max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
+
+        _global_size = cl::NDRange(max(multi, 1LU) * _max_cu * _max_wg_size);
         _buffer_size = _global_size[0] * sizeof(cl_ulong);
         _buf_limit = _buffer_size - sizeof(long double);
 
         // resize host buffers, create device buffers
         _state_buf = cl::Buffer(__context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _global_size[0] * STATE_SIZES[algorithm]);
         _device_buffer = cl::Buffer(__context, CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY, _buffer_size);
-        vector<cl::Buffer> temp_buffers(_n_buffers-1, cl::Buffer(__context, CL_MEM_WRITE_ONLY, _buffer_size));
         for (Buffer &buf : _host_buffers)
         {
             buf.rng = this;
@@ -259,7 +261,7 @@ struct RNG_private
         }
 
         // initialize RNG
-        cl::Kernel k_init(__program, INIT_KERNEL_NAMES[algorithm]);
+        cl::Kernel k_init(program, INIT_KERNEL_NAMES[algorithm]);
         cl::Event initialized;
         k_init.setArg(0, _state_buf);
 
@@ -299,24 +301,22 @@ struct RNG_private
         }
 
         // create kernel
-        _k_generate = cl::Kernel(__program, GENERATE_KERNEL_NAMES[algorithm]);
+        _k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES[algorithm]);
         _k_generate.setArg(0, _state_buf);
+        _k_generate.setArg(1, _device_buffer);
 
         // fill all buffers
-        vector<cl::Event> buffers_read(_n_buffers);
-        for (size_t i = 1; i < _n_buffers; i++)
+        vector<cl::Event> buffers_filled(_n_buffers);
+        for (size_t i = 0; i < _n_buffers; i++)
         {
-            _k_generate.setArg(1, temp_buffers[i-1]);
             _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
-            _queue.enqueueReadBuffer(temp_buffers[i-1], false, 0, _buffer_size, _host_buffers[i].data, nullptr, &buffers_read[i]);
+            _queue.enqueueReadBuffer(_device_buffer, false, 0, _buffer_size, _host_buffers[i].data, nullptr, &buffers_filled[i]);
         }
-        _k_generate.setArg(1, _device_buffer);
-        _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
-        _queue.enqueueReadBuffer(_device_buffer, false, 0, _buffer_size, _host_buffers[0].data, nullptr, &buffers_read[0]);
-        cl::Event::waitForEvents(buffers_read);
 
         // generate future numbers
         _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
+
+        cl::WaitForEvents(buffers_filled);
 
         _init_time = chrono::system_clock::now() - start;
         _gpu_transfer_time_total = nanoseconds::zero();
@@ -327,9 +327,16 @@ struct RNG_private
 
     ~RNG_private()
     {
+        // ensure set_flag won't be called on a deleted Buffer
+        for (Buffer &buffer : _host_buffers)
+        {
+            unique_lock<mutex> lock(buffer.ready_lock);
+            buffer.ready_cond.wait(lock, [&] { return buffer.ready; });
+        }
+
         __memory_usage -= _n_buffers * _buffer_size;
-        __sum_avg_transfers_deleted += avg_gpu_transfer_time();
-        __sum_init_times_deleted += _init_time;
+        __sum_avg_transfer_time_deleted += avg_gpu_transfer_time();
+        __sum_init_time_deleted += _init_time;
         __sum_buffer_misses_deleted += _buffer_misses;
         __n_deleted_rngs++;
     }
@@ -432,21 +439,24 @@ extern "C" {
 rand_gpu_rng *rand_gpu_new_default()
 {
     RNG_private *rng = new RNG_private;
-    __rngs[rng] = unique_ptr<RNG_private>(rng);
+    lock_guard<mutex> lock(__rngs_lock);
+    __rngs.emplace(rng, unique_ptr<RNG_private>(rng));
     return rng;
 }
 
 rand_gpu_rng *rand_gpu_new(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi)
 {
     RNG_private *rng = new RNG_private(n_buffers, buffer_multi, algorithm);
-    __rngs[rng] = unique_ptr<RNG_private>(rng);
+    lock_guard<mutex> lock(__rngs_lock);
+    __rngs.emplace(rng, unique_ptr<RNG_private>(rng));
     return rng;
 }
 
 rand_gpu_rng *rand_gpu_new_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi)
 {
     RNG_private *rng = new RNG_private(n_buffers, buffer_multi, algorithm, true, seed);
-    __rngs[rng] = unique_ptr<RNG_private>(rng);
+    lock_guard<mutex> lock(__rngs_lock);
+    __rngs.emplace(rng, unique_ptr<RNG_private>(rng));
     return rng;
 }
 
@@ -458,6 +468,7 @@ void rand_gpu_delete(rand_gpu_rng *rng)
 
 void rand_gpu_delete_all()
 {
+    lock_guard<mutex> lock(__rngs_lock);
     __rngs.clear();
 }
 
@@ -496,7 +507,8 @@ namespace rand_gpu
     :
         d_ptr_(new RNG_private(2, 1, A, false))
     {
-        __rngs[d_ptr_] = unique_ptr<RNG_private>(d_ptr_);
+        lock_guard<mutex> lock(__rngs_lock);
+        __rngs.emplace(d_ptr_, unique_ptr<RNG_private>(d_ptr_));
     }
 
     template <rand_gpu_algorithm A>
@@ -504,7 +516,8 @@ namespace rand_gpu
     :
         d_ptr_(new RNG_private(n_buffers, multi, A, false))
     {
-        __rngs[d_ptr_] = unique_ptr<RNG_private>(d_ptr_);
+        lock_guard<mutex> lock(__rngs_lock);
+        __rngs.emplace(d_ptr_, unique_ptr<RNG_private>(d_ptr_));
     }
 
     template <rand_gpu_algorithm A>
@@ -512,19 +525,21 @@ namespace rand_gpu
     :
         d_ptr_(new RNG_private(n_buffers, multi, A, true, seed))
     {
-        __rngs[d_ptr_] = unique_ptr<RNG_private>(d_ptr_);
+        lock_guard<mutex> lock(__rngs_lock);
+        __rngs.emplace(d_ptr_, unique_ptr<RNG_private>(d_ptr_));
     }
 
     template <rand_gpu_algorithm A>
     RNG<A>::~RNG()
     {
+        lock_guard<mutex> lock(__rngs_lock);
         __rngs.erase(d_ptr_);
     }
 
     template <rand_gpu_algorithm A>
     RNG<A>::RNG(RNG&&) = default;
     template <rand_gpu_algorithm A>
-    RNG<A>& RNG<A>::operator=(RNG&&) = default;
+    RNG<A> &RNG<A>::operator=(RNG&&) = default;
 
     template <rand_gpu_algorithm A>
     template <typename T>
@@ -575,7 +590,7 @@ namespace rand_gpu
         }
 
         // add the averages of deleted RNGs
-        sum += __sum_avg_transfers_deleted.load();
+        sum += __sum_avg_transfer_time_deleted.load();
         return sum / (__rngs.size() + __n_deleted_rngs);
     }
 
@@ -591,7 +606,7 @@ namespace rand_gpu
         }
 
         // add the averages of deleted RNGs
-        sum += __sum_init_times_deleted.load();
+        sum += __sum_init_time_deleted.load();
         return sum / (__rngs.size() + __n_deleted_rngs);
     }
 
