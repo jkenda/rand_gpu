@@ -64,6 +64,8 @@ float pi_lib(size_t n_buffers, size_t multi)
         printf("%lu misses\n", rand_gpu_rng_buffer_misses(rng));
     }
 
+    rand_gpu_delete_all();
+
     return (float) count / SAMPLES * 4;
 }
 

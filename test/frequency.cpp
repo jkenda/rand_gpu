@@ -1,50 +1,29 @@
 #include <iostream>
-#include <unordered_map>
 #include <cstdint>
-#include <mutex>
 #include "../include/RNG.hpp"
 
-#define SAMPLES (1'000'000'000)
+#define SAMPLES (256*10)
 
 using namespace std;
 
-unordered_map<uint32_t, size_t> frequency;
-mutex merge_lock;
+size_t frequency[256];
 
 int main()
 {
-    frequency.reserve(UINT16_MAX);
+    rand_gpu::RNG rng(RAND_GPU_ALGORITHM_TYCHE, 8, 64);
 
-    #pragma omp parallel
+    cout << "counting...";
+
+    for (size_t i = 0; i < SAMPLES; i++)
     {
-        unordered_map<uint32_t, size_t> frequency_l;
-        frequency_l.reserve(UINT16_MAX);
-
-        rand_gpu::RNG rng(RAND_GPU_ALGORITHM_TYCHE, 8, 256);
-
-        #pragma omp single
-        cout << "counting...";
-
-        #pragma omp for
-        for (size_t i = 0; i < SAMPLES; i++)
-        {
-            auto num = rng.get_random<uint32_t>();
-            frequency_l[num]++;
-        }
-
-        #pragma omp single
-        cout << "\rmerging...";
-
-        {
-            lock_guard<mutex> lock(merge_lock);
-            frequency.merge(frequency_l);
-        }
+        auto num = rng.get_random<uint8_t>();
+        frequency[num]++;
     }
 
     cout << "\rnumber;frequency\n";
 
-    for (auto &[num, freq] : frequency)
+    for (int i = 0; i < 256; i++)
     {
-        cout << to_string(num) << ';' << freq << '\n';
+        cout << i << ';' << frequency[i] << '\n';
     }
 }

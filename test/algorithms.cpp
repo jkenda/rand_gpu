@@ -29,7 +29,7 @@ void print()
     cout << rand_gpu::algorithm_name(algorithm, true) << ":\n";
     cout << "init time: " << rng.init_time() << '\n';
 
-    for (size_t j = 0; j < 256; j++)
+    for (size_t i = 0; i < 256; i++)
     {
         cout << (short) rng.template get_random<uint8_t>() << ' ';
     }
@@ -50,7 +50,7 @@ void time_pi(float time_std)
     printf("%16s: ", rand_gpu::algorithm_name(algorithm)); flush(cout);
 
     auto start = system_clock::now();
-    rand_gpu::RNG<algorithm> rng(0, 8, 32);
+    rand_gpu::RNG<algorithm> rng(0, 2, 16);
 
     long cnt = 0;
 
@@ -67,6 +67,7 @@ void time_pi(float time_std)
     cout << "pi ≃ " << pi << " (+-" << abs(pi - M_PI) << "), ";
     cout << "speedup = " << time_std / time_lib << ", ";
     cout << rng.buffer_misses() << " misses, ";
+    cout << "init time: " << rng.init_time() << ", ";
     cout << "avg. access time: " << rng.avg_gpu_transfer_time() << '\n';
 }
 
