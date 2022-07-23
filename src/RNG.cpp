@@ -327,13 +327,14 @@ struct RNG_private
 
     ~RNG_private()
     {
-        // ensure set_flag won't be called on a deleted Buffer
+        // ensure set_flag won't try to access a deleted Buffer
         for (Buffer &buffer : _host_buffers)
         {
             unique_lock<mutex> lock(buffer.ready_lock);
             buffer.ready_cond.wait(lock, [&] { return buffer.ready; });
         }
 
+        // set global variables
         __memory_usage -= _n_buffers * _buffer_size;
         __sum_avg_transfer_time_deleted += avg_gpu_transfer_time();
         __sum_init_time_deleted += _init_time;

@@ -70,7 +70,7 @@ int main()
     for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
     {
         float best_speedup = 0;
-        int fastest_n_buffers, fastest_multi;
+        int fastest_n_buffers = 0, fastest_multi = 0;
 
         puts("algorithm,multi,2,4,8,16");
 

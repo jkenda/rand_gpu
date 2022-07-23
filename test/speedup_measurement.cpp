@@ -6,12 +6,13 @@
 #include <cstring>
 #include <algorithm>
 
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#define SAMPLES 10
 #define C 0
 #define CPP 1
 #define FLT 0
 #define DBL 1
+
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#define SAMPLES 10
 
 struct parameters
 {
@@ -35,14 +36,22 @@ static const duration DURATION = 2s;
 mt19937 generator32(system_clock::now().time_since_epoch().count());
 mt19937_64 generator64(system_clock::now().time_since_epoch().count());
 
+nanoseconds time_calc[10];
 
 template <typename T>
 uint64_t num_generated_cpu_c(const nanoseconds duration, const uint32_t percent_calc)
 {
     const uint32_t percent_gen = 100 - percent_calc;
+    const uint32_t i = percent_calc / 10;
     size_t num_generated = 0;
 
     auto start = high_resolution_clock::now();
+
+    if (percent_calc == 100) {
+        while (high_resolution_clock::now() - start < duration)
+            num_generated++;
+        return num_generated;
+    }
 
     while (high_resolution_clock::now() - start < duration)
     {
@@ -50,12 +59,15 @@ uint64_t num_generated_cpu_c(const nanoseconds duration, const uint32_t percent_
         for (int i = 0; i < SAMPLES; i++)
             volatile T a = rand() / (T) RAND_MAX;
         auto duration_gen = high_resolution_clock::now() - start_gen;
+        auto duration_calc = duration_gen * percent_calc / percent_gen;
 
         auto start_calc = high_resolution_clock::now();
-        auto finish_calc = start_calc + duration_gen * percent_calc / percent_gen;
+        auto finish_calc = start_calc + duration_calc;
         while (high_resolution_clock::now() < finish_calc);
         num_generated++;
+        time_calc[i] += duration_calc;
     }
+    time_calc[i] /= num_generated;
 
     return num_generated;
 }
@@ -64,10 +76,17 @@ template <typename T>
 uint64_t num_generated_cpu_cpp(const nanoseconds duration, const uint32_t percent_calc)
 {
     const uint32_t percent_gen = 100 - percent_calc;
+    const uint32_t i = percent_calc / 10;
     size_t num_generated = 0;
 
     auto start = high_resolution_clock::now();
 
+    if (percent_calc == 100) {
+        while (high_resolution_clock::now() - start < duration)
+            num_generated++;
+        return num_generated;
+    }
+    
     while (high_resolution_clock::now() - start < duration)
     {
         auto start_gen = high_resolution_clock::now();
@@ -76,12 +95,15 @@ uint64_t num_generated_cpu_cpp(const nanoseconds duration, const uint32_t percen
                 ? generator64() / (T) UINT64_MAX
                 : generator32() / (T) UINT32_MAX;
         auto duration_gen = high_resolution_clock::now() - start_gen;
+        auto duration_calc = duration_gen * percent_calc / percent_gen;
 
         auto start_calc = high_resolution_clock::now();
-        auto finish_calc = start_calc + duration_gen * percent_calc / percent_gen;
+        auto finish_calc = start_calc + duration_calc;
         while (high_resolution_clock::now() < finish_calc);
         num_generated++;
+        time_calc[i] += duration_calc;
     }
+    time_calc[i] /= num_generated;
 
     return num_generated;
 }
@@ -90,19 +112,24 @@ template <typename T>
 uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_calc, rand_gpu_rng *rng)
 {
     const uint32_t percent_gen = 100 - percent_calc;
+    const uint32_t i = percent_calc / 10;
     size_t num_generated = 0;
 
     auto start = high_resolution_clock::now();
 
+    if (percent_calc == 100) {
+        while (high_resolution_clock::now() - start < duration)
+            num_generated++;
+        return num_generated;
+    }
+    
     while (high_resolution_clock::now() - start < duration)
     {
-        auto start_gen = high_resolution_clock::now();
         for (int i = 0; i < SAMPLES; i++)
             volatile T a = is_same<T, double>::value ? rand_gpu_double(rng) : rand_gpu_float(rng);
-        auto duration_gen = high_resolution_clock::now() - start_gen;
 
         auto start_calc = high_resolution_clock::now();
-        auto finish_calc = start_calc + duration_gen * percent_calc / percent_gen;
+        auto finish_calc = start_calc + time_calc[i];
         while (high_resolution_clock::now() < finish_calc);
         num_generated++;
     }
@@ -118,17 +145,17 @@ int main(int argc, char **argv)
     if (argc >= 3 && strcmp(argv[2], "double"))
         type = DBL;
 
-    int num_cpu[10];
+    int num_cpu[11];
 
     // algorithm, n_buffers, multi, %
-    float speedup[N_ALGORITHMS][4][7][10];
+    float speedup[N_ALGORITHMS][4][7][11];
 
     srand(time(NULL));
 
     cout << "measuring CPU times ...\n";
 
     cout << "percent,num_generated\n";
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i <= 10; i++)
     {
         int percent_calc = i * 10;
         if (lang == C) {
@@ -146,11 +173,11 @@ int main(int argc, char **argv)
     }
     cout << '\n';
 
-    cout << "measuring GPU times...\n";
+    cout << "measuring GPU times (100 % should always be around 1)...\n";
 
     for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
     {
-        cout << "algorithm,n_buffers,multi,0 %,10 %,20 %,30 %,40 %,50 %,60 %,70 %,80 %,90 %\n";
+        cout << "algorithm,n_buffers,multi,0 %,10 %,20 %,30 %,40 %,50 %,60 %,70 %,80 %,90 %,100 %\n";
 
         for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
         {
@@ -161,7 +188,7 @@ int main(int argc, char **argv)
 
                 rand_gpu_rng *rng = rand_gpu_new((rand_gpu_algorithm) algorithm, n_buffers, multi);
                 
-                for (int i = 0; i < 10; i++)
+                for (int i = 0; i <= 10; i++)
                 {
                     int percent_calc = i * 10;
                     uint64_t num_gpu = (type == FLT) 
@@ -241,7 +268,7 @@ int main(int argc, char **argv)
                 int multi_offset = log2(multi);
                 float avg_speedup = 0.0f;
 
-                for (int i = 0; i < 10; i++)
+                for (int i = 0; i <= 10; i++)
                 {
                     float current_speedup = speedup[algorithm][n_buffers_offset][multi_offset][i];
                     avg_speedup += current_speedup;
