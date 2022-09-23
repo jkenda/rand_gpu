@@ -16,9 +16,16 @@
 
 struct parameters
 {
-    rand_gpu_algorithm algorithm;
+    const char *algorithm_name;
     int n_buffers, multi;
     float speedup;
+};
+
+struct algorithm_speedup
+{
+    const char *algorithm_name;
+    float speedup;
+    bool operator<(const algorithm_speedup &other) { return other.speedup < speedup; }
 };
 
 using namespace std;
@@ -36,13 +43,13 @@ static const duration DURATION = 2s;
 mt19937 generator32(system_clock::now().time_since_epoch().count());
 mt19937_64 generator64(system_clock::now().time_since_epoch().count());
 
-nanoseconds time_calc[10];
+nanoseconds time_calc[11];
 
 template <typename T>
-uint64_t num_generated_cpu_c(const nanoseconds duration, const uint32_t percent_calc)
+uint64_t num_generated_cpu_c(const nanoseconds duration, const uint32_t percent_gen)
 {
-    const uint32_t percent_gen = 100 - percent_calc;
-    const uint32_t i = percent_calc / 10;
+    const uint32_t percent_calc = 100 - percent_gen;
+    const uint32_t i = percent_gen / 10;
     size_t num_generated = 0;
 
     auto start = high_resolution_clock::now();
@@ -73,10 +80,10 @@ uint64_t num_generated_cpu_c(const nanoseconds duration, const uint32_t percent_
 }
 
 template <typename T>
-uint64_t num_generated_cpu_cpp(const nanoseconds duration, const uint32_t percent_calc)
+uint64_t num_generated_cpu_cpp(const nanoseconds duration, const uint32_t percent_gen)
 {
-    const uint32_t percent_gen = 100 - percent_calc;
-    const uint32_t i = percent_calc / 10;
+    const uint32_t percent_calc = 100 - percent_gen;
+    const uint32_t i = percent_gen / 10;
     size_t num_generated = 0;
 
     auto start = high_resolution_clock::now();
@@ -109,10 +116,10 @@ uint64_t num_generated_cpu_cpp(const nanoseconds duration, const uint32_t percen
 }
 
 template <typename T>
-uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_calc, rand_gpu_rng *rng)
+uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_gen, rand_gpu_rng *rng)
 {
-    const uint32_t percent_gen = 100 - percent_calc;
-    const uint32_t i = percent_calc / 10;
+    const uint32_t percent_calc = 100 - percent_gen;
+    const uint32_t i = percent_gen / 10;
     size_t num_generated = 0;
 
     auto start = high_resolution_clock::now();
@@ -150,9 +157,43 @@ int main(int argc, char **argv)
     // algorithm, n_buffers, multi, %
     float speedup[N_ALGORITHMS][4][7][11];
 
+    // compilation and initilization times
+
+    cout << "Compilation time for each algorithm:\n\n";
+    cout << "algorithm,compilation time [ms]\n";
+
+    for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
+    {
+        rand_gpu_rng *rng = rand_gpu_new((rand_gpu_algorithm) algorithm, 2, 1);
+        rand_gpu_delete_all();
+        printf("%s,%f\n", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), 
+            rand_gpu_compilation_time((rand_gpu_algorithm) algorithm));
+    }
+    cout << '\n';
+
+    cout << "Initilization times for each algorithm [ms]:\n\n";
+
+    for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
+    {
+        cout << "algorithm,multi,2 buffers,4 buffers,8 buffers,16 buffers\n";
+        for (int multi = 1; multi <= 64; multi *= 2)
+        {
+            printf("%s,%02d", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), multi);
+            for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
+            {
+                rand_gpu_rng *rng = rand_gpu_new((rand_gpu_algorithm) algorithm, n_buffers, multi);
+                printf(",%.5f", rand_gpu_rng_init_time(rng));
+                rand_gpu_delete_all();
+            }
+            cout << '\n';
+        }
+        cout << endl;
+    }
+
+
     srand(time(NULL));
 
-    cout << "measuring CPU times ...\n";
+    cout << "measuring CPU times ...\n\n";
 
     cout << "percent,num_generated\n";
     for (int i = 0; i <= 10; i++)
@@ -170,10 +211,11 @@ int main(int argc, char **argv)
         }
 
         printf("%d,%e\n", percent_calc, (double) num_cpu[i]);
+        flush(cout);
     }
     cout << '\n';
 
-    cout << "measuring GPU times (100 % should always be around 1)...\n";
+    cout << "measuring GPU times for different proportion of generation/calculation (0 % generation should always be around 1)...\n\n";
 
     for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
     {
@@ -234,7 +276,7 @@ int main(int argc, char **argv)
                     {
                         best_speedup = current_speedup;
                         best_parameters_percent[i] = 
-                            { (rand_gpu_algorithm) algorithm, n_buffers, multi, current_speedup };
+                            { rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), n_buffers, multi, current_speedup };
                     }
                 }
             }
@@ -242,11 +284,11 @@ int main(int argc, char **argv)
     }
 
     cout << "Best parameters for each workload type:\n";
-    cout << "percentage,algorithm,n_buffers,multi,speedup\n";
+    cout << "percent calc,algorithm,n_buffers,multi,speedup\n";
 
     for (int i = 0; i < 10; i++)
     {
-        printf("%d,%s,%d,%d,%f\n", i * 10, rand_gpu::algorithm_name(best_parameters_percent[i].algorithm),
+        printf("%d,%s,%d,%d,%f\n", i * 10, best_parameters_percent[i].algorithm_name,
             best_parameters_percent[i].n_buffers, best_parameters_percent[i].multi, best_parameters_percent[i].speedup);
     }
     cout << '\n';
@@ -279,7 +321,7 @@ int main(int argc, char **argv)
                 {
                     best_speedup = avg_speedup;
                     best_parameters_algorithm[algorithm] = 
-                        { (rand_gpu_algorithm) algorithm, n_buffers, multi, avg_speedup };
+                        { rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), n_buffers, multi, avg_speedup };
                 }
             }
         }
@@ -288,10 +330,57 @@ int main(int argc, char **argv)
     cout << "Best parameters for algorithm:\n";
     cout << "algorithm,n_buffers,multi,speedup\n";
 
-    for (int i = 0; i < N_ALGORITHMS; i++)
+    for (int a = 0; a < N_ALGORITHMS; a++)
     {
-        printf("%s,%d,%d,%f\n", rand_gpu::algorithm_name((rand_gpu_algorithm) i),
-            best_parameters_algorithm[i].n_buffers, best_parameters_algorithm[i].multi, best_parameters_algorithm[i].speedup);
+        printf("%s,%d,%d,%f\n", rand_gpu::algorithm_name((rand_gpu_algorithm) a),
+            best_parameters_algorithm[a].n_buffers, best_parameters_algorithm[a].multi, best_parameters_algorithm[a].speedup);
+    }
+    cout << '\n';
+
+
+    // print performance at multi in relation to n_buffers
+
+    cout << "Algorithm performance at different n_buffers in relation to multi (50 % generation):\n\n";
+
+    for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
+    {
+        cout << "algorithm,multi,2 buffers,4 buffers,8 buffers,16 buffers\n";
+        for (int multi = 1; multi <= 64; multi *= 2)
+        {
+            int multi_offset = log2(multi);
+            printf("%s,%02d", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), multi);
+            for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
+            {
+            int n_buffers_offset = log2(n_buffers) - 1;
+                float speedup_current = speedup[algorithm][n_buffers_offset][multi_offset][5];
+                printf(",%.5f", speedup_current);
+            }
+            cout << '\n';
+        }
+        cout << '\n';
+    }
+
+    cout << "Algorithm performance for each generation/calculation ratio:\n\n";
+
+    for (int i = 0; i <= 10; i++)
+    {
+        algorithm_speedup speedup_algorithm[N_ALGORITHMS];
+        int percent_calc = i * 10;
+        for (int a = RAND_GPU_ALGORITHM_KISS09; a <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; a++)
+        {
+            const int n_buffers_offset = log2(2) - 1, multi_offset = log2(64);
+            speedup_algorithm[a].algorithm_name = rand_gpu::algorithm_name((rand_gpu_algorithm) a);
+            speedup_algorithm[a].speedup = speedup[a][n_buffers_offset][multi_offset][i];
+        }
+
+        sort(speedup_algorithm, speedup_algorithm+N_ALGORITHMS);
+
+        cout << "algorithm," << percent_calc << " %\n";
+        for (int a = RAND_GPU_ALGORITHM_KISS09; a <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; a++)
+        {
+            printf("%s,%.5f\n", speedup_algorithm[a].algorithm_name, speedup_algorithm[a].speedup);
+        }
+        cout << '\n';
     }
 
 }

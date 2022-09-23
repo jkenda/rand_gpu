@@ -64,11 +64,11 @@ void time_pi(float time_std)
     float pi = cnt / (double) SAMPLES * 4;
 
     float time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
-    cout << "pi ≃ " << pi << " (+-" << abs(pi - M_PI) << "), ";
-    cout << "speedup = " << time_std / time_lib << ", ";
-    cout << rng.buffer_misses() << " misses, ";
-    cout << "init time: " << rng.init_time() << ", ";
-    cout << "avg. access time: " << rng.avg_gpu_transfer_time() << '\n';
+    printf("pi ≃ %.5f (+-%.9f), ", pi, abs(pi - M_PI));
+    printf("speedup = %.3f, ", time_std / time_lib);
+    printf("%4lu misses, ", rng.buffer_misses());
+    printf("init time: %7.3f ms, ", rng.init_time().count() / (float) 1'000'000);
+    printf("avg. access time: %6.3f ms\n", rng.avg_gpu_transfer_time().count() / (float) 1'000'000);
 }
 
 template <>

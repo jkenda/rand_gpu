@@ -71,6 +71,11 @@ namespace rand_gpu
         std::size_t buffer_size() const;
 
         /**
+         * @brief Returns number of times the buffer was switched.
+         */
+        std::size_t buffer_switches() const;
+
+        /**
          * @brief Returns number of times we had to wait for GPU to fill the buffer.
          */
         std::size_t buffer_misses() const;
@@ -101,6 +106,11 @@ namespace rand_gpu
     std::size_t memory_usage();
 
     /**
+     * @brief Returns number of times the buffer was switched in all RNG instances.
+     */
+    std::size_t buffer_switches();
+
+    /**
      * @brief Returns number of times we had to wait for GPU to fill the buffer.
      */
     std::size_t buffer_misses();
@@ -114,6 +124,13 @@ namespace rand_gpu
      * @brief Return average GPU transfer time of all RNGs.
      */
     std::chrono::nanoseconds avg_gpu_transfer_time();
+
+    /**
+     * @brief Returns the compilation time for the algorithm.
+     * 
+     * @param algorithm enum of the algorithm
+     */
+    std::chrono::nanoseconds compilation_time(rand_gpu_algorithm algorithm);
 
     /**
      * @brief Returns the name of the algorithm corresponding to the enum.

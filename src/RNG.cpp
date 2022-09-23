@@ -14,7 +14,7 @@
 
 #include <cstdint>
 #include <vector>
-#include <map>
+#include <unordered_set>
 #include <mutex>
 #include <condition_variable>
 #include <random>
@@ -127,14 +127,18 @@ static mt19937_64 __generator;
 static cl::Context __context;
 static cl::Program __programs[N_ALGORITHMS];
 static bool __program_built[N_ALGORITHMS] = { false };
+static nanoseconds __compilation_times[N_ALGORITHMS];
 
 static atomic<nanoseconds> __sum_init_time_deleted = nanoseconds::zero();
 static atomic<nanoseconds> __sum_avg_transfer_time_deleted = nanoseconds::zero();
+
 static atomic<size_t> __sum_buffer_misses_deleted = 0;
+static atomic<size_t> __sum_buffer_switches_deleted = 0;
 static atomic<size_t> __n_deleted_rngs = 0;
 
 static mutex __rngs_lock;
-static map<RNG_private *, unique_ptr<RNG_private>> __rngs;
+static mutex __delete_all_lock;
+static unordered_set<RNG_private *> __rngs;
 
 
 struct RNG_private
@@ -157,11 +161,12 @@ struct RNG_private
 
     size_t _buf_offset = 0;
 
-    nanoseconds _init_time;
-    size_t _buffer_misses = 0;
+    nanoseconds _init_time = nanoseconds::zero();
+    nanoseconds _gpu_transfer_time_total = nanoseconds::zero();
 
-    nanoseconds _gpu_transfer_time_total;
-    size_t _n_gpu_transfers;
+    size_t _n_gpu_transfers = 0;
+    size_t _n_buffer_switches = 0;
+    size_t _n_buffer_misses = 0;
 
 
     RNG_private(size_t n_buffers = 2, size_t multi = 1, rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE,
@@ -220,7 +225,9 @@ struct RNG_private
 
                 try
                 {
+                    auto build_start = system_clock::now();
                     program.build(__devices);
+                    __compilation_times[algorithm] = system_clock::now() - build_start;
                 }
                 catch (const cl::Error &err)
                 {
@@ -281,7 +288,7 @@ struct RNG_private
                 vector<uint32_t> seeds(_global_size[0]);
                 for (size_t i = 0; i < _global_size[0]; i++)
                     seeds[i] = seed_generator();
-                cl::Buffer cl_seeds(__context, seeds.begin(), seeds.end(), true, false);
+                cl::Buffer cl_seeds(_queue, seeds.rbegin(), seeds.rend(), true, false);
                 k_init.setArg(1, cl_seeds);
                 cl::Event e;
                 _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
@@ -294,7 +301,7 @@ struct RNG_private
                 vector<uint64_t> seeds(_global_size[0]);
                 for (size_t i = 0; i < _global_size[0]; i++)
                     seeds[i] = seed_generator();
-                cl::Buffer cl_seeds(__context, seeds.begin(), seeds.end(), true, false);
+                cl::Buffer cl_seeds(_queue, seeds.begin(), seeds.end(), true, false);
                 k_init.setArg(1, cl_seeds);
                 _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
             }
@@ -306,23 +313,20 @@ struct RNG_private
         _k_generate.setArg(1, _device_buffer);
 
         // fill all buffers
-        vector<cl::Event> buffers_filled(_n_buffers);
         for (size_t i = 0; i < _n_buffers; i++)
         {
             _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
-            _queue.enqueueReadBuffer(_device_buffer, false, 0, _buffer_size, _host_buffers[i].data, nullptr, &buffers_filled[i]);
+            _queue.enqueueReadBuffer(_device_buffer, true, 0, _buffer_size, _host_buffers[i].data);
         }
 
         // generate future numbers
         _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
 
-        cl::WaitForEvents(buffers_filled);
-
         _init_time = chrono::system_clock::now() - start;
-        _gpu_transfer_time_total = nanoseconds::zero();
-        _n_gpu_transfers = 0;
-
         __memory_usage += _n_buffers * _buffer_size;
+
+        lock_guard<mutex> rngs_lock(__rngs_lock);
+        __rngs.insert(this);
     }
 
     ~RNG_private()
@@ -338,8 +342,12 @@ struct RNG_private
         __memory_usage -= _n_buffers * _buffer_size;
         __sum_avg_transfer_time_deleted += avg_gpu_transfer_time();
         __sum_init_time_deleted += _init_time;
-        __sum_buffer_misses_deleted += _buffer_misses;
+        __sum_buffer_switches_deleted += _n_buffer_switches;
+        __sum_buffer_misses_deleted += _n_buffer_misses;
         __n_deleted_rngs++;
+
+        lock_guard<mutex> rngs_lock(__rngs_lock);
+        __rngs.erase(this);
     }
 
 
@@ -352,7 +360,7 @@ struct RNG_private
         if (_buf_offset == 0)
         {
             unique_lock<mutex> lock(active_host_buf.ready_lock);
-            if (!active_host_buf.ready) _buffer_misses++;
+            if (!active_host_buf.ready) _n_buffer_misses++;
             active_host_buf.ready_cond.wait(lock, [&] { return active_host_buf.ready; });
         }
 
@@ -375,6 +383,7 @@ struct RNG_private
             // switch active buffer
             _active_buf = (_active_buf + 1) % _n_buffers;
             _buf_offset = 0;
+            _n_buffer_switches++;
         }
 
         return num;
@@ -439,50 +448,46 @@ extern "C" {
 
 rand_gpu_rng *rand_gpu_new_default()
 {
-    RNG_private *rng = new RNG_private;
-    lock_guard<mutex> lock(__rngs_lock);
-    __rngs.emplace(rng, unique_ptr<RNG_private>(rng));
-    return rng;
+    return new RNG_private;
 }
 
 rand_gpu_rng *rand_gpu_new(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi)
 {
-    RNG_private *rng = new RNG_private(n_buffers, buffer_multi, algorithm);
-    lock_guard<mutex> lock(__rngs_lock);
-    __rngs.emplace(rng, unique_ptr<RNG_private>(rng));
-    return rng;
+    return new RNG_private(n_buffers, buffer_multi, algorithm);
 }
 
 rand_gpu_rng *rand_gpu_new_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi)
 {
-    RNG_private *rng = new RNG_private(n_buffers, buffer_multi, algorithm, true, seed);
-    lock_guard<mutex> lock(__rngs_lock);
-    __rngs.emplace(rng, unique_ptr<RNG_private>(rng));
-    return rng;
+    return new RNG_private(n_buffers, buffer_multi, algorithm, true, seed);
 }
 
 void rand_gpu_delete(rand_gpu_rng *rng)
 {
-    lock_guard<mutex> lock(__rngs_lock);
-    __rngs.erase((RNG_private *) rng);
+    delete (RNG_private *) rng;
 }
 
 void rand_gpu_delete_all()
 {
-    lock_guard<mutex> lock(__rngs_lock);
-    __rngs.clear();
+    lock_guard<mutex> lock(__delete_all_lock);
+    for (auto it = __rngs.begin(); it != __rngs.end();)
+    {
+        delete *(it++);
+    }
 }
 
 size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng)           { return ((const RNG_private *) rng)->_buffer_size; }
-size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng)         { return ((const RNG_private *) rng)->_buffer_misses; }
+size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng)       { return ((const RNG_private *) rng)->_n_buffer_switches; }
+size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng)         { return ((const RNG_private *) rng)->_n_buffer_misses; }
 float  rand_gpu_rng_init_time(const rand_gpu_rng *rng)             { return ((const RNG_private *) rng)->_init_time.count() / MILLION; }
 float  rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng) { return ((const RNG_private *) rng)->avg_gpu_transfer_time().count() / MILLION; }
 
 size_t rand_gpu_memory_usage()          { return __memory_usage; }
+size_t rand_gpu_buffer_switches()       { return rand_gpu::buffer_switches(); }
 size_t rand_gpu_buffer_misses()         { return rand_gpu::buffer_misses(); }
 float  rand_gpu_avg_init_time()         { return rand_gpu::avg_init_time().count() / MILLION; }
 float  rand_gpu_avg_gpu_transfer_time() { return rand_gpu::avg_gpu_transfer_time().count() / MILLION; }
 
+float rand_gpu_compilation_time(rand_gpu_algorithm algorithm) { return __compilation_times[algorithm].count() / MILLION; }
 const char *rand_gpu_algorithm_name(rand_gpu_algorithm algorithm, bool description) { return rand_gpu::algorithm_name(algorithm, description); }
 
 uint64_t rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint64_t>(); }
@@ -508,8 +513,6 @@ namespace rand_gpu
     :
         d_ptr_(new RNG_private(2, 1, A, false))
     {
-        lock_guard<mutex> lock(__rngs_lock);
-        __rngs.emplace(d_ptr_, unique_ptr<RNG_private>(d_ptr_));
     }
 
     template <rand_gpu_algorithm A>
@@ -517,8 +520,6 @@ namespace rand_gpu
     :
         d_ptr_(new RNG_private(n_buffers, multi, A, false))
     {
-        lock_guard<mutex> lock(__rngs_lock);
-        __rngs.emplace(d_ptr_, unique_ptr<RNG_private>(d_ptr_));
     }
 
     template <rand_gpu_algorithm A>
@@ -526,15 +527,11 @@ namespace rand_gpu
     :
         d_ptr_(new RNG_private(n_buffers, multi, A, true, seed))
     {
-        lock_guard<mutex> lock(__rngs_lock);
-        __rngs.emplace(d_ptr_, unique_ptr<RNG_private>(d_ptr_));
     }
 
     template <rand_gpu_algorithm A>
     RNG<A>::~RNG()
     {
-        lock_guard<mutex> lock(__rngs_lock);
-        __rngs.erase(d_ptr_);
     }
 
     template <rand_gpu_algorithm A>
@@ -556,9 +553,15 @@ namespace rand_gpu
     }
 
     template <rand_gpu_algorithm A>
+    size_t RNG<A>::buffer_switches() const
+    {
+        return d_ptr_->_n_buffer_switches;
+    }
+
+    template <rand_gpu_algorithm A>
     size_t RNG<A>::buffer_misses() const
     {
-        return d_ptr_->_buffer_misses;
+        return d_ptr_->_n_buffer_misses;
     }
 
     template <rand_gpu_algorithm A>
@@ -585,7 +588,7 @@ namespace rand_gpu
         lock_guard<mutex> lock(__rngs_lock);
 
         // add the averages of active RNGs
-        for (const auto &[_, rng] : __rngs)
+        for (RNG_private *rng : __rngs)
         {
             sum += rng->avg_gpu_transfer_time();
         }
@@ -601,7 +604,7 @@ namespace rand_gpu
         lock_guard<mutex> lock(__rngs_lock);
 
         // add the averages of active RNGs
-        for (const auto &[_, rng] : __rngs)
+        for (RNG_private *rng : __rngs)
         {
             sum += rng->_init_time;
         }
@@ -611,22 +614,42 @@ namespace rand_gpu
         return sum / (__rngs.size() + __n_deleted_rngs);
     }
 
+    size_t buffer_switches()
+    {
+        size_t sum = 0;
+        lock_guard<mutex> lock(__rngs_lock);
+
+        // add the averages of active RNGs
+        for (RNG_private *rng : __rngs)
+        {
+            sum += rng->_n_buffer_switches;
+        }
+
+        // add the averages of deleted RNGs
+        sum += __sum_buffer_switches_deleted;
+        return sum;
+    }
+
     size_t buffer_misses()
     {
         size_t sum = 0;
         lock_guard<mutex> lock(__rngs_lock);
 
         // add the averages of active RNGs
-        for (const auto &[_, rng] : __rngs)
+        for (RNG_private *rng : __rngs)
         {
-            sum += rng->_buffer_misses;
+            sum += rng->_n_buffer_misses;
         }
 
         // add the averages of deleted RNGs
         sum += __sum_buffer_misses_deleted;
-        return sum / (__rngs.size() + __n_deleted_rngs);
+        return sum;
     }
 
+    std::chrono::nanoseconds compilation_time(rand_gpu_algorithm algorithm)
+    {
+        return __compilation_times[algorithm];
+    }
 
     const char *algorithm_name(rand_gpu_algorithm algorithm, bool description)
     {

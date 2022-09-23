@@ -20,7 +20,7 @@ lib/librand_gpu.so: bin/test_kernel RNG.o
 
 install: lib/librand_gpu.so
 #	@mkdir -p ~/.local/lib/
-	cp lib/librand_gpu.so /usr/local/lib/
+	cp lib/*     /usr/local/lib/
 	cp include/* /usr/local/include/
 
 run: pi_parallel
@@ -82,6 +82,10 @@ fastest_multiplier: lib/librand_gpu.so test/fastest_multiplier.c
 speedup_measurement: lib/librand_gpu.so test/speedup_measurement.cpp
 	@mkdir -p bin/c++
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/speedup_measurement test/speedup_measurement.cpp -lrand_gpu
+
+speedup_measurement_parallel: lib/librand_gpu.so test/speedup_measurement_parallel.cpp
+	@mkdir -p bin/c++
+	$(CPPC) -g --std=c++17 -Llib -o bin/c++/speedup_measurement_parallel test/speedup_measurement_parallel.cpp -lrand_gpu -fopenmp
 
 clean:
 	-rm -rf bin/*

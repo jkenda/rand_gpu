@@ -89,6 +89,12 @@ void rand_gpu_delete_all();
 size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng);
 
 /**
+ * @brief Returns number of times the buffer was switched.
+ * @param rng RNG whose buffer switches to retrieve
+ */
+size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng);
+
+/**
  * @brief Returns number of times we had to wait for GPU to fill the buffer.
  * @param rng RNG whose buffer misses to retrieve
  */
@@ -113,7 +119,12 @@ float rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng);
 size_t rand_gpu_memory_usage();
 
 /**
- * @brief Returns number of times we had to wait for GPU to fill the buffer.
+ * @brief Returns number of times the buffer was switched in all RNG instances.
+ */
+size_t rand_gpu_buffer_switches();
+
+/**
+ * @brief Returns number of times we had to wait for GPU to fill the buffer in all RNG instances.
  */
 size_t rand_gpu_buffer_misses();
 
@@ -126,6 +137,13 @@ float rand_gpu_avg_init_time();
  * @brief Return average GPU transfer time of all RNGs.
  */
 float rand_gpu_avg_gpu_transfer_time();
+
+/**
+ * @brief Returns the compilation time for the algorithm in ms.
+ * 
+ * @param algorithm enum of the algorithm
+ */
+float rand_gpu_compilation_time(enum rand_gpu_algorithm algorithm);
 
 /**
  * @brief Returns the name of the algorithm corresponding to the enum.
