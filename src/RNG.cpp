@@ -12,6 +12,7 @@
 #include "../include/RNG.hpp"
 #include "../include/rand_gpu.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 #include <unordered_set>
@@ -30,7 +31,6 @@
 #include "../kernel.hpp"
 
 using namespace std;
-using chrono::duration_cast;
 using chrono::nanoseconds;
 using chrono::system_clock;
 
@@ -43,9 +43,6 @@ struct Buffer
     condition_variable ready_cond;
     system_clock::time_point start_time;
     RNG_private *rng;
-
-    ~Buffer() { delete[] data; }
-    inline void alloc(const size_t size) { data = new uint8_t[size]; }
 };
 
 atomic<nanoseconds> &operator+=(atomic<nanoseconds> &a, nanoseconds b)
@@ -121,20 +118,20 @@ static bool __initialized = false;
 
 static vector<cl::Device> __devices;
 static size_t __device_i = 0;
-static atomic<size_t> __memory_usage = 0;
+static atomic<size_t> __memory_usage(0);
 
 static mt19937_64 __generator;
 static cl::Context __context;
 static cl::Program __programs[N_ALGORITHMS];
-static bool __program_built[N_ALGORITHMS] = { false };
+static bool __program_built[N_ALGORITHMS];
 static nanoseconds __compilation_times[N_ALGORITHMS];
 
-static atomic<nanoseconds> __sum_init_time_deleted = nanoseconds::zero();
-static atomic<nanoseconds> __sum_avg_transfer_time_deleted = nanoseconds::zero();
+static atomic<nanoseconds> __sum_init_time_deleted(nanoseconds::zero());
+static atomic<nanoseconds> __sum_avg_transfer_time_deleted(nanoseconds::zero());
 
-static atomic<size_t> __sum_buffer_misses_deleted = 0;
-static atomic<size_t> __sum_buffer_switches_deleted = 0;
-static atomic<size_t> __n_deleted_rngs = 0;
+static atomic<size_t> __sum_buffer_misses_deleted(0);
+static atomic<size_t> __sum_buffer_switches_deleted(0);
+static atomic<size_t> __n_deleted_rngs(0);
 
 static mutex __rngs_lock;
 static mutex __delete_all_lock;
@@ -146,7 +143,6 @@ struct RNG_private
     cl::CommandQueue _queue;
     cl::Kernel _k_generate;
     cl::Buffer _state_buf;
-    cl::Buffer _device_buffer;
 
     uint32_t _max_cu;
     size_t _max_wg_size;
@@ -157,6 +153,7 @@ struct RNG_private
 
     const size_t _n_buffers;
     vector<Buffer> _host_buffers;
+    vector<cl::Buffer> _device_buffers;
     uint_fast8_t _active_buf = 0;
 
     size_t _buf_offset = 0;
@@ -173,7 +170,8 @@ struct RNG_private
         bool use_custom_seed = false, uint64_t custom_seed = 0)
     :
         _n_buffers(max(n_buffers, 2LU)),
-        _host_buffers(max(n_buffers, 2LU))
+        _host_buffers(max(n_buffers, 2LU)),
+        _device_buffers(max(n_buffers, 2LU))
     {
         cl_ulong seed;
         cl::Device device;
@@ -260,11 +258,12 @@ struct RNG_private
 
         // resize host buffers, create device buffers
         _state_buf = cl::Buffer(__context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _global_size[0] * STATE_SIZES[algorithm]);
-        _device_buffer = cl::Buffer(__context, CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY, _buffer_size);
-        for (Buffer &buf : _host_buffers)
+
+        for (size_t i = 0; i < n_buffers; i++)
         {
-            buf.rng = this;
-            buf.alloc(_buffer_size);
+            _device_buffers[i] = cl::Buffer(__context, CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, _buffer_size);
+            _host_buffers[i].data = (uint8_t *) _queue.enqueueMapBuffer(_device_buffers[i], true, CL_MAP_WRITE, 0, _buffer_size);
+            _host_buffers[i].rng = this;
         }
 
         // initialize RNG
@@ -288,7 +287,7 @@ struct RNG_private
                 vector<uint32_t> seeds(_global_size[0]);
                 for (size_t i = 0; i < _global_size[0]; i++)
                     seeds[i] = seed_generator();
-                cl::Buffer cl_seeds(_queue, seeds.rbegin(), seeds.rend(), true, false);
+                cl::Buffer cl_seeds(_queue, seeds.rbegin(), seeds.rend(), true, true);
                 k_init.setArg(1, cl_seeds);
                 cl::Event e;
                 _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
@@ -310,17 +309,13 @@ struct RNG_private
         // create kernel
         _k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES[algorithm]);
         _k_generate.setArg(0, _state_buf);
-        _k_generate.setArg(1, _device_buffer);
 
         // fill all buffers
         for (size_t i = 0; i < _n_buffers; i++)
         {
+            _k_generate.setArg(1, _device_buffers[i]);
             _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
-            _queue.enqueueReadBuffer(_device_buffer, true, 0, _buffer_size, _host_buffers[i].data);
         }
-
-        // generate future numbers
-        _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
 
         _init_time = chrono::system_clock::now() - start;
         __memory_usage += _n_buffers * _buffer_size;
@@ -375,8 +370,8 @@ struct RNG_private
             active_host_buf.ready = false;
 
             // enqueue reading data, generating future numbers
-            _queue.enqueueReadBuffer(_device_buffer, false, 0, _buffer_size, active_host_buf.data, nullptr, &active_host_buf.ready_event);
-            _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
+            _k_generate.setArg(1, _device_buffers[_active_buf]);
+            _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size, cl::NullRange, NULL, &active_host_buf.ready_event);
             active_host_buf.start_time = system_clock::now();
             active_host_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_host_buf);
 
