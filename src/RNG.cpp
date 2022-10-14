@@ -36,11 +36,16 @@ using chrono::system_clock;
 
 struct Buffer
 {
-    uint8_t *data = nullptr;
+    cl::Buffer device;
+    uint8_t *host = nullptr;
+
+    cl::Kernel k_generate;
+
     bool ready = true;
     mutex ready_lock;
     cl::Event ready_event;
     condition_variable ready_cond;
+
     system_clock::time_point start_time;
     RNG_private *rng;
 };
@@ -141,7 +146,6 @@ static unordered_set<RNG_private *> __rngs;
 struct RNG_private
 {
     cl::CommandQueue _queue;
-    cl::Kernel _k_generate;
     cl::Buffer _state_buf;
 
     uint32_t _max_cu;
@@ -152,8 +156,7 @@ struct RNG_private
     size_t _buf_limit;
 
     const size_t _n_buffers;
-    vector<Buffer> _host_buffers;
-    vector<cl::Buffer> _device_buffers;
+    vector<Buffer> _buffers;
     uint_fast8_t _active_buf = 0;
 
     size_t _buf_offset = 0;
@@ -170,8 +173,7 @@ struct RNG_private
         bool use_custom_seed = false, uint64_t custom_seed = 0)
     :
         _n_buffers(max(n_buffers, 2LU)),
-        _host_buffers(max(n_buffers, 2LU)),
-        _device_buffers(max(n_buffers, 2LU))
+        _buffers(max(n_buffers, 2LU))
     {
         cl_ulong seed;
         cl::Device device;
@@ -261,9 +263,9 @@ struct RNG_private
 
         for (size_t i = 0; i < n_buffers; i++)
         {
-            _device_buffers[i] = cl::Buffer(__context, CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, _buffer_size);
-            _host_buffers[i].data = (uint8_t *) _queue.enqueueMapBuffer(_device_buffers[i], true, CL_MAP_WRITE, 0, _buffer_size);
-            _host_buffers[i].rng = this;
+            _buffers[i].device = cl::Buffer(__context, CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, _buffer_size);
+            _buffers[i].host = (uint8_t *) _queue.enqueueMapBuffer(_buffers[i].device, true, CL_MAP_WRITE, 0, _buffer_size);
+            _buffers[i].rng = this;
         }
 
         // initialize RNG
@@ -307,14 +309,14 @@ struct RNG_private
         }
 
         // create kernel
-        _k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES[algorithm]);
-        _k_generate.setArg(0, _state_buf);
 
         // fill all buffers
-        for (size_t i = 0; i < _n_buffers; i++)
+        for (Buffer &buffer : _buffers)
         {
-            _k_generate.setArg(1, _device_buffers[i]);
-            _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
+            buffer.k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES[algorithm]);
+            buffer.k_generate.setArg(0, _state_buf);
+            buffer.k_generate.setArg(1, buffer.device);
+            _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size);
         }
 
         _init_time = chrono::system_clock::now() - start;
@@ -329,11 +331,11 @@ struct RNG_private
         for (size_t i = 0; i < _n_buffers; i++)
         {
             // ensure set_flag won't try to access a deleted Buffer
-            unique_lock<mutex> lock(_host_buffers[i].ready_lock);
-            _host_buffers[i].ready_cond.wait(lock, [&] { return _host_buffers[i].ready; });
+            unique_lock<mutex> lock(_buffers[i].ready_lock);
+            _buffers[i].ready_cond.wait(lock, [&] { return _buffers[i].ready; });
 
             // unmap host_ptr
-            _queue.enqueueUnmapMemObject(_device_buffers[i], _host_buffers[i].data);
+            _queue.enqueueUnmapMemObject(_buffers[i].device, _buffers[i].host);
         }
 
         _queue.flush();
@@ -355,31 +357,30 @@ struct RNG_private
     template <typename T>
     T get_random()
     {
-        Buffer &active_host_buf = _host_buffers[_active_buf];
+        Buffer &active_buf = _buffers[_active_buf];
 
         // just switched buffers - wait for buffer to be ready
         if (_buf_offset == 0)
         {
-            unique_lock<mutex> lock(active_host_buf.ready_lock);
-            if (!active_host_buf.ready) _n_buffer_misses++;
-            active_host_buf.ready_cond.wait(lock, [&] { return active_host_buf.ready; });
+            unique_lock<mutex> lock(active_buf.ready_lock);
+            if (!active_buf.ready) _n_buffer_misses++;
+            active_buf.ready_cond.wait(lock, [&] { return active_buf.ready; });
         }
 
         // retrieve number from buffer
         T num;
-        memcpy(&num, &active_host_buf.data[_buf_offset], sizeof(T));
+        memcpy(&num, &active_buf.host[_buf_offset], sizeof(T));
         _buf_offset += sizeof(T);
 
         // out of numbers in current buffer
         if (_buf_offset >= _buf_limit)
         {
-            active_host_buf.ready = false;
+            active_buf.ready = false;
 
             // enqueue reading data, generating future numbers
-            _k_generate.setArg(1, _device_buffers[_active_buf]);
-            _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size, cl::NullRange, NULL, &active_host_buf.ready_event);
-            active_host_buf.start_time = system_clock::now();
-            active_host_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_host_buf);
+            _queue.enqueueNDRangeKernel(active_buf.k_generate, 0, _global_size, cl::NullRange, NULL, &active_buf.ready_event);
+            active_buf.start_time = system_clock::now();
+            active_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_buf);
 
             // switch active buffer
             _active_buf = (_active_buf + 1) % _n_buffers;
