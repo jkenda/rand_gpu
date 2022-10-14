@@ -326,12 +326,18 @@ struct RNG_private
 
     ~RNG_private()
     {
-        // ensure set_flag won't try to access a deleted Buffer
-        for (Buffer &buffer : _host_buffers)
+        for (size_t i = 0; i < _n_buffers; i++)
         {
-            unique_lock<mutex> lock(buffer.ready_lock);
-            buffer.ready_cond.wait(lock, [&] { return buffer.ready; });
+            // ensure set_flag won't try to access a deleted Buffer
+            unique_lock<mutex> lock(_host_buffers[i].ready_lock);
+            _host_buffers[i].ready_cond.wait(lock, [&] { return _host_buffers[i].ready; });
+
+            // unmap host_ptr
+            _queue.enqueueUnmapMemObject(_device_buffers[i], _host_buffers[i].data);
         }
+
+        _queue.flush();
+        _queue.finish();
 
         // set global variables
         __memory_usage -= _n_buffers * _buffer_size;
@@ -527,6 +533,7 @@ namespace rand_gpu
     template <rand_gpu_algorithm A>
     RNG<A>::~RNG()
     {
+        delete d_ptr_;
     }
 
     template <rand_gpu_algorithm A>
