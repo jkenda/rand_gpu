@@ -1,5 +1,6 @@
 #include "../include/RNG.hpp"
 #include <chrono>
+#include <cstdint>
 #include <random>
 #include <iostream>
 #include <cstdlib>
@@ -32,16 +33,14 @@ using namespace std;
 using chrono::duration;
 using chrono::seconds;
 using chrono::nanoseconds;
-using chrono::system_clock;
-using chrono::high_resolution_clock;
-using chrono::duration_cast;
+using chrono::steady_clock;
 
 static const int N_ALGORITHMS = RAND_GPU_ALGORITHM_XORSHIFT6432STAR - RAND_GPU_ALGORITHM_KISS09 + 1;
-static const duration DURATION = 2s;
+static const duration<uint64_t> DURATION(2s);
 
 
-mt19937 generator32(system_clock::now().time_since_epoch().count());
-mt19937_64 generator64(system_clock::now().time_since_epoch().count());
+mt19937 generator32(steady_clock::now().time_since_epoch().count());
+mt19937_64 generator64(steady_clock::now().time_since_epoch().count());
 
 nanoseconds time_calc[11];
 
@@ -52,25 +51,25 @@ uint64_t num_generated_cpu_c(const nanoseconds duration, const uint32_t percent_
     const uint32_t i = percent_gen / 10;
     size_t num_generated = 0;
 
-    auto start = high_resolution_clock::now();
+    auto start = steady_clock::now();
 
     if (percent_calc == 100) {
-        while (high_resolution_clock::now() - start < duration)
+        while (steady_clock::now() - start < duration)
             num_generated++;
         return num_generated;
     }
 
-    while (high_resolution_clock::now() - start < duration)
+    while (steady_clock::now() - start < duration)
     {
-        auto start_gen = high_resolution_clock::now();
+        auto start_gen = steady_clock::now();
         for (int i = 0; i < SAMPLES; i++)
             volatile T a = rand() / (T) RAND_MAX;
-        auto duration_gen = high_resolution_clock::now() - start_gen;
+        auto duration_gen = chrono::steady_clock::now() - start_gen;
         auto duration_calc = duration_gen * percent_calc / percent_gen;
 
-        auto start_calc = high_resolution_clock::now();
+        auto start_calc = chrono::steady_clock::now();
         auto finish_calc = start_calc + duration_calc;
-        while (high_resolution_clock::now() < finish_calc);
+        while (steady_clock::now() < finish_calc);
         num_generated++;
         time_calc[i] += duration_calc;
     }
@@ -86,27 +85,27 @@ uint64_t num_generated_cpu_cpp(const nanoseconds duration, const uint32_t percen
     const uint32_t i = percent_gen / 10;
     size_t num_generated = 0;
 
-    auto start = high_resolution_clock::now();
+    auto start = steady_clock::now();
 
     if (percent_calc == 100) {
-        while (high_resolution_clock::now() - start < duration)
+        while (steady_clock::now() - start < duration)
             num_generated++;
         return num_generated;
     }
     
-    while (high_resolution_clock::now() - start < duration)
+    while (steady_clock::now() - start < duration)
     {
-        auto start_gen = high_resolution_clock::now();
+        auto start_gen = steady_clock::now();
         for (int i = 0; i < SAMPLES; i++)
             volatile T a = (is_same<T, double>::value)
                 ? generator64() / (T) UINT64_MAX
                 : generator32() / (T) UINT32_MAX;
-        auto duration_gen = high_resolution_clock::now() - start_gen;
+        auto duration_gen = steady_clock::now() - start_gen;
         auto duration_calc = duration_gen * percent_calc / percent_gen;
 
-        auto start_calc = high_resolution_clock::now();
+        auto start_calc = steady_clock::now();
         auto finish_calc = start_calc + duration_calc;
-        while (high_resolution_clock::now() < finish_calc);
+        while (steady_clock::now() < finish_calc);
         num_generated++;
         time_calc[i] += duration_calc;
     }
@@ -122,22 +121,22 @@ uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_ge
     const uint32_t i = percent_gen / 10;
     size_t num_generated = 0;
 
-    auto start = high_resolution_clock::now();
+    auto start = steady_clock::now();
 
     if (percent_calc == 100) {
-        while (high_resolution_clock::now() - start < duration)
+        while (steady_clock::now() - start < duration)
             num_generated++;
         return num_generated;
     }
     
-    while (high_resolution_clock::now() - start < duration)
+    while (steady_clock::now() - start < duration)
     {
         for (int i = 0; i < SAMPLES; i++)
             volatile T a = is_same<T, double>::value ? rand_gpu_double(rng) : rand_gpu_float(rng);
 
-        auto start_calc = high_resolution_clock::now();
+        auto start_calc = steady_clock::now();
         auto finish_calc = start_calc + time_calc[i];
-        while (high_resolution_clock::now() < finish_calc);
+        while (steady_clock::now() < finish_calc);
         num_generated++;
     }
 
