@@ -302,7 +302,10 @@ public:
             return "empty";
         }
         else {
-            return errStr_;
+            char *err = new char[64];
+            sprintf(err, "%d in %s", err_, errStr_);
+
+            return err;
         }
     }
 

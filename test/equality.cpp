@@ -26,7 +26,7 @@ int main(int argc, char **argv)
     if (argc == 3)
         sscanf(argv[2], "%lu", &multi);
 
-    rand_gpu::RNG rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
+    rand_gpu::RNG<RAND_GPU_ALGORITHM_MT19937> rng(n_buffers, multi);
 
     size_t bufsiz = rng.buffer_size();
 

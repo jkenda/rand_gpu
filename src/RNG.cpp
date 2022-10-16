@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <mutex>
 #include <condition_variable>
 #include <random>
@@ -34,22 +35,6 @@ using namespace std;
 using chrono::nanoseconds;
 using chrono::system_clock;
 
-struct Buffer
-{
-    cl::Buffer device;
-    uint8_t *host = nullptr;
-
-    cl::Kernel k_generate;
-
-    bool ready = true;
-    mutex ready_lock;
-    cl::Event ready_event;
-    condition_variable ready_cond;
-
-    system_clock::time_point start_time;
-    RNG_private *rng;
-};
-
 atomic<nanoseconds> &operator+=(atomic<nanoseconds> &a, nanoseconds b)
 {
     a.exchange(a.load() + b);
@@ -57,58 +42,58 @@ atomic<nanoseconds> &operator+=(atomic<nanoseconds> &a, nanoseconds b)
 }
 
 
-static const size_t STATE_SIZES[] = {
-    4 * sizeof(cl_ulong),                                        // KISS09,
-    2 * sizeof(cl_ulong),                                        // LCG12864,
-    17 * sizeof(cl_ulong) + 2 * sizeof(cl_char),                 // LFIB,
-    6 * sizeof(cl_long),                                         // MRG63K3A,
-    max(sizeof(cl_ulong) + 2 * sizeof(cl_uint2), sizeof(ulong)), // MSWS,
-    624 * sizeof(cl_uint) + sizeof(cl_int),                      // MT19937,
-    max(sizeof(cl_ulong), 2 * sizeof(cl_uint)),                  // MWC64X,
-    sizeof(cl_ulong),                                            // PCG6432,
-    max(sizeof(cl_ulong), sizeof(cl_uint)),                      // PHILOX2X32_10,
-    35 * sizeof(cl_int),                                         // RAN2,
-    3 * sizeof(cl_ulong) + 2 * sizeof(cl_uint),                  // TINYMT64,
-    max(4 * sizeof(cl_uint), sizeof(cl_ulong)),                  // TYCHE,
-    max(4 * sizeof(cl_uint), sizeof(cl_ulong)),                  // TYCHE_I,
-    17 * sizeof(cl_uint),                                        // WELL512,
-    sizeof(cl_ulong),                                            // XORSHIFT6432STAR,
+static const unordered_map<rand_gpu_algorithm, size_t> STATE_SIZES = {
+    { RAND_GPU_ALGORITHM_KISS09          , 4 * sizeof(cl_ulong)                                             },
+    { RAND_GPU_ALGORITHM_LCG12864        , 2 * sizeof(cl_ulong)                                             },
+    { RAND_GPU_ALGORITHM_LFIB            , 17 * sizeof(cl_ulong) + 2 * sizeof(cl_char),                     },
+    { RAND_GPU_ALGORITHM_MRG63K3A        , 6 * sizeof(cl_long)                                              },
+    { RAND_GPU_ALGORITHM_MSWS            , max(sizeof(cl_ulong) + 2 * sizeof(cl_uint2), sizeof(ulong)) },
+    { RAND_GPU_ALGORITHM_MT19937         , 624 * sizeof(cl_uint) + sizeof(cl_int)                           },
+    { RAND_GPU_ALGORITHM_MWC64X          , max(sizeof(cl_ulong), 2 * sizeof(cl_uint))                  },
+    { RAND_GPU_ALGORITHM_PCG6432         , sizeof(cl_ulong)                                                 },
+    { RAND_GPU_ALGORITHM_PHILOX2X32_10   , max(sizeof(cl_ulong), sizeof(cl_uint))                      },
+    { RAND_GPU_ALGORITHM_RAN2            , 35 * sizeof(cl_int)                                              },
+    { RAND_GPU_ALGORITHM_TINYMT64        , 3 * sizeof(cl_ulong) + 2 * sizeof(cl_uint)                       },
+    { RAND_GPU_ALGORITHM_TYCHE           , max(4 * sizeof(cl_uint), sizeof(cl_ulong))                  },
+    { RAND_GPU_ALGORITHM_TYCHE_I         , max(4 * sizeof(cl_uint), sizeof(cl_ulong))                  },
+    { RAND_GPU_ALGORITHM_WELL512         , 17 * sizeof(cl_uint)                                             },
+    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR, sizeof(cl_ulong)                                                 },
 };
 
-static const char *INIT_KERNEL_NAMES[] = {
-    "kiss09_init",           // KISS09,
-    "lcg12864_init",         // LCG12864,
-    "lfib_init",             // LFIB,
-    "mrg63k3a_init",         // MRG63K3A,
-    "msws_init",             // MSWS,
-    "mt19937_init",          // MT19937,
-    "mwc64x_init",           // MWC64X,
-    "pcg6432_init",          // PCG6432,
-    "philox2x32_10_init",    // PHILOX2X32_10,
-    "ran2_init",             // RAN2,
-    "tinymt64_init",         // TINYMT64,
-    "tyche_init",            // TYCHE,
-    "tyche_i_init",          // TYCHE_I,
-    "well512_init",          // WELL512,
-    "xorshift6432star_init", // XORSHIFT6432STAR,
+static const unordered_map<rand_gpu_algorithm, const char *> INIT_KERNEL_NAMES = {
+    { RAND_GPU_ALGORITHM_KISS09          , "kiss09_init"            },
+    { RAND_GPU_ALGORITHM_LCG12864        , "lcg12864_init"          },
+    { RAND_GPU_ALGORITHM_LFIB            , "lfib_init"              },
+    { RAND_GPU_ALGORITHM_MRG63K3A        , "mrg63k3a_init"          },
+    { RAND_GPU_ALGORITHM_MSWS            , "msws_init"              },
+    { RAND_GPU_ALGORITHM_MT19937         , "mt19937_init"           },
+    { RAND_GPU_ALGORITHM_MWC64X          , "mwc64x_init"            },
+    { RAND_GPU_ALGORITHM_PCG6432         , "pcg6432_init"           },
+    { RAND_GPU_ALGORITHM_PHILOX2X32_10   , "philox2x32_10_init"     },
+    { RAND_GPU_ALGORITHM_RAN2            , "ran2_init"              },
+    { RAND_GPU_ALGORITHM_TINYMT64        , "tinymt64_init"          },
+    { RAND_GPU_ALGORITHM_TYCHE           , "tyche_init"             },
+    { RAND_GPU_ALGORITHM_TYCHE_I         , "tyche_i_init"           },
+    { RAND_GPU_ALGORITHM_WELL512         , "well512_init"           },
+    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR, "xorshift6432star_init"  },
 };
 
-static const char *GENERATE_KERNEL_NAMES[] = {
-    "kiss09_generate",           // KISS09,
-    "lcg12864_generate",         // LCG12864,
-    "lfib_generate",             // LFIB,
-    "mrg63k3a_generate",         // MRG63K3A,
-    "msws_generate",             // MSWS,
-    "mt19937_generate",          // MT19937,
-    "mwc64x_generate",           // MWC64X,
-    "pcg6432_generate",          // PCG6432,
-    "philox2x32_10_generate",    // PHILOX2X32_10,
-    "ran2_generate",             // RAN2,
-    "tinymt64_generate",         // TINYMT64,
-    "tyche_generate",            // TYCHE,
-    "tyche_i_generate",          // TYCHE_I,
-    "well512_generate",          // WELL512,
-    "xorshift6432star_generate", // XORSHIFT6432STAR,
+static const unordered_map<rand_gpu_algorithm, const char *> GENERATE_KERNEL_NAMES = {
+    { RAND_GPU_ALGORITHM_KISS09          , "kiss09_generate"            },
+    { RAND_GPU_ALGORITHM_LCG12864        , "lcg12864_generate"          },
+    { RAND_GPU_ALGORITHM_LFIB            , "lfib_generate"              },
+    { RAND_GPU_ALGORITHM_MRG63K3A        , "mrg63k3a_generate"          },
+    { RAND_GPU_ALGORITHM_MSWS            , "msws_generate"              },
+    { RAND_GPU_ALGORITHM_MT19937         , "mt19937_generate"           },
+    { RAND_GPU_ALGORITHM_MWC64X          , "mwc64x_generate"            },
+    { RAND_GPU_ALGORITHM_PCG6432         , "pcg6432_generate"           },
+    { RAND_GPU_ALGORITHM_PHILOX2X32_10   , "philox2x32_10_generate"     },
+    { RAND_GPU_ALGORITHM_RAN2            , "ran2_generate"              },
+    { RAND_GPU_ALGORITHM_TINYMT64        ,  "tinymt64_generate"         },
+    { RAND_GPU_ALGORITHM_TYCHE           ,  "tyche_generate"            },
+    { RAND_GPU_ALGORITHM_TYCHE_I         ,  "tyche_i_generate"          },
+    { RAND_GPU_ALGORITHM_WELL512         ,  "well512_generate"          },
+    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR,  "xorshift6432star_generate" },
 };
 
 static const float FLOAT_MULTIPLIER = 1.0f / static_cast<float>(UINT32_MAX);
@@ -145,6 +130,22 @@ static unordered_set<RNG_private *> __rngs;
 
 struct RNG_private
 {
+    struct Buffer
+    {
+        cl::Buffer device;
+        uint8_t *host = nullptr;
+
+        cl::Kernel k_generate;
+
+        bool ready = true;
+        mutex ready_lock;
+        cl::Event ready_event;
+        condition_variable ready_cond;
+
+        system_clock::time_point start_time;
+        RNG_private *rng;
+    };
+
     cl::CommandQueue _queue;
     cl::Buffer _state_buf;
 
@@ -154,10 +155,11 @@ struct RNG_private
     cl::NDRange _global_size;
     size_t _buffer_size;
     size_t _buf_limit;
+    bool _unified_memory;
 
     const size_t _n_buffers;
     vector<Buffer> _buffers;
-    uint_fast8_t _active_buf = 0;
+    uint_fast8_t _active_buf_id = 0;
 
     size_t _buf_offset = 0;
 
@@ -253,25 +255,25 @@ struct RNG_private
         // get device info
         _max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
         _max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
+        _unified_memory = device.getInfo<CL_DEVICE_HOST_UNIFIED_MEMORY>();
+        size_t max_mem  = device.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>();
 
-        _global_size = cl::NDRange(max(multi, 1LU) * _max_cu * _max_wg_size);
-        _buffer_size = _global_size[0] * sizeof(cl_ulong);
+        // calculate optimal buffer size
+        _buffer_size = min(max(multi, 1LU) * _max_cu * _max_wg_size * sizeof(cl_ulong), max_mem);
+        _global_size = cl::NDRange(_buffer_size / sizeof(cl_ulong));
         _buf_limit = _buffer_size - sizeof(long double);
 
         // resize host buffers, create device buffers
-        _state_buf = cl::Buffer(__context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _global_size[0] * STATE_SIZES[algorithm]);
-
-        for (size_t i = 0; i < n_buffers; i++)
-        {
-            _buffers[i].device = cl::Buffer(__context, CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, _buffer_size);
-            _buffers[i].host = (uint8_t *) _queue.enqueueMapBuffer(_buffers[i].device, true, CL_MAP_WRITE, 0, _buffer_size);
-            _buffers[i].rng = this;
-        }
+        size_t state_buf_size = _global_size[0] * STATE_SIZES.at(algorithm);
+        state_buf_size = state_buf_size - state_buf_size % 256 + 256;
+        _state_buf = cl::Buffer(__context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, state_buf_size);
 
         // initialize RNG
-        cl::Kernel k_init(program, INIT_KERNEL_NAMES[algorithm]);
+        cl::Kernel k_init(program, INIT_KERNEL_NAMES.at(algorithm));
         cl::Event initialized;
         k_init.setArg(0, _state_buf);
+
+        cl::Event transferred;
 
         switch (algorithm)
         {
@@ -284,40 +286,65 @@ struct RNG_private
         case RAND_GPU_ALGORITHM_MT19937:
             // 32-bit seeds
             {
-                mt19937 seed_generator(seed);
-                seed_generator.discard(_global_size[0]);
-                vector<uint32_t> seeds(_global_size[0]);
+                ranlux48 seed_generator(seed);
+
+                size_t seed_bufsiz = _global_size[0] * sizeof(cl_uint);
+                cl::Buffer cl_seeds(__context, CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, seed_bufsiz);
+                cl_uint *seeds = (cl_uint *) _queue.enqueueMapBuffer(cl_seeds, CL_FALSE, CL_MAP_WRITE, 0, seed_bufsiz);
+
                 for (size_t i = 0; i < _global_size[0]; i++)
-                    seeds[i] = seed_generator();
-                cl::Buffer cl_seeds(_queue, seeds.rbegin(), seeds.rend(), true, true);
+                    seeds[i] = seed_generator(); // ranlux48 only outputs 48-bit numbers
+                if (!_unified_memory)
+                    _queue.enqueueWriteBuffer(cl_seeds, CL_FALSE, 0, 0, seeds, NULL, &transferred);
+
+                transferred.wait();
+
                 k_init.setArg(1, cl_seeds);
-                cl::Event e;
                 _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
+
+                _queue.enqueueUnmapMemObject(cl_seeds, seeds);
             }
             break;
         default:
             // 64-bit seeds
             {
                 mt19937_64 seed_generator(seed);
-                vector<uint64_t> seeds(_global_size[0]);
+                vector<cl_ulong> seeds(_global_size[0]);
                 for (size_t i = 0; i < _global_size[0]; i++)
                     seeds[i] = seed_generator();
-                cl::Buffer cl_seeds(_queue, seeds.begin(), seeds.end(), true, false);
+                cl::Buffer cl_seeds(_queue, seeds.begin(), seeds.end(), CL_TRUE, CL_TRUE);
                 k_init.setArg(1, cl_seeds);
                 _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
             }
         }
-
-        // create kernel
-
-        // fill all buffers
+        // create and bind buffers
         for (Buffer &buffer : _buffers)
         {
-            buffer.k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES[algorithm]);
+            buffer.device = cl::Buffer(__context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, _buffer_size);
+            buffer.host = (uint8_t *) _queue.enqueueMapBuffer(buffer.device, CL_TRUE, CL_MAP_READ, 0, _buffer_size);
+            buffer.rng = this;
+        }
+
+        // create kernels for buffers
+        for (Buffer &buffer : _buffers)
+        {
+            buffer.k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES.at(algorithm));
             buffer.k_generate.setArg(0, _state_buf);
             buffer.k_generate.setArg(1, buffer.device);
-            _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size);
         }
+
+        // generate 1st batch of numbers
+        for (const Buffer &buffer : _buffers)
+        {
+            _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
+            if (!_unified_memory) {
+                _queue.enqueueReadBuffer(buffer.device, CL_FALSE, 0, _buffer_size, buffer.host);
+                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
+            }
+        }
+
+        _queue.flush();
+        _queue.finish();
 
         _init_time = chrono::system_clock::now() - start;
         __memory_usage += _n_buffers * _buffer_size;
@@ -328,14 +355,14 @@ struct RNG_private
 
     ~RNG_private()
     {
-        for (size_t i = 0; i < _n_buffers; i++)
+        for (Buffer &buffer : _buffers)
         {
             // ensure set_flag won't try to access a deleted Buffer
-            unique_lock<mutex> lock(_buffers[i].ready_lock);
-            _buffers[i].ready_cond.wait(lock, [&] { return _buffers[i].ready; });
+            unique_lock<mutex> lock(buffer.ready_lock);
+            buffer.ready_cond.wait(lock, [&] { return buffer.ready; });
 
             // unmap host_ptr
-            _queue.enqueueUnmapMemObject(_buffers[i].device, _buffers[i].host);
+            _queue.enqueueUnmapMemObject(buffer.device, buffer.host);
         }
 
         _queue.flush();
@@ -357,7 +384,7 @@ struct RNG_private
     template <typename T>
     T get_random()
     {
-        Buffer &active_buf = _buffers[_active_buf];
+        Buffer &active_buf = _buffers[_active_buf_id];
 
         // just switched buffers - wait for buffer to be ready
         if (_buf_offset == 0)
@@ -378,12 +405,21 @@ struct RNG_private
             active_buf.ready = false;
 
             // enqueue reading data, generating future numbers
-            _queue.enqueueNDRangeKernel(active_buf.k_generate, 0, _global_size, cl::NullRange, NULL, &active_buf.ready_event);
+            if (_unified_memory)
+            {
+                _queue.enqueueNDRangeKernel(active_buf.k_generate, 0, _global_size, cl::NullRange, NULL, &active_buf.ready_event);
+            }
+            else
+            {
+                _queue.enqueueReadBuffer(active_buf.device, CL_FALSE, 0, _buffer_size, active_buf.host,
+                                         NULL, &active_buf.ready_event);
+                _queue.enqueueNDRangeKernel(active_buf.k_generate, cl::NullRange, _global_size);
+            }
             active_buf.start_time = system_clock::now();
             active_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_buf);
 
             // switch active buffer
-            _active_buf = (_active_buf + 1) % _n_buffers;
+            _active_buf_id = (_active_buf_id + 1) % _n_buffers;
             _buf_offset = 0;
             _n_buffer_switches++;
         }
