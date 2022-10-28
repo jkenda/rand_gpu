@@ -43,21 +43,21 @@ atomic<nanoseconds> &operator+=(atomic<nanoseconds> &a, nanoseconds b)
 
 
 static const unordered_map<rand_gpu_algorithm, size_t> STATE_SIZES = {
-    { RAND_GPU_ALGORITHM_KISS09          , 4 * sizeof(cl_ulong)                                             },
-    { RAND_GPU_ALGORITHM_LCG12864        , 2 * sizeof(cl_ulong)                                             },
-    { RAND_GPU_ALGORITHM_LFIB            , 17 * sizeof(cl_ulong) + 2 * sizeof(cl_char),                     },
-    { RAND_GPU_ALGORITHM_MRG63K3A        , 6 * sizeof(cl_long)                                              },
+    { RAND_GPU_ALGORITHM_KISS09          , 4 * sizeof(cl_ulong)                                        },
+    { RAND_GPU_ALGORITHM_LCG12864        , 2 * sizeof(cl_ulong)                                        },
+    { RAND_GPU_ALGORITHM_LFIB            , 17 * sizeof(cl_ulong) + 2 * sizeof(cl_char),                },
+    { RAND_GPU_ALGORITHM_MRG63K3A        , 6 * sizeof(cl_long)                                         },
     { RAND_GPU_ALGORITHM_MSWS            , max(sizeof(cl_ulong) + 2 * sizeof(cl_uint2), sizeof(ulong)) },
-    { RAND_GPU_ALGORITHM_MT19937         , 624 * sizeof(cl_uint) + sizeof(cl_int)                           },
+    { RAND_GPU_ALGORITHM_MT19937         , 624 * sizeof(cl_uint) + sizeof(cl_int)                      },
     { RAND_GPU_ALGORITHM_MWC64X          , max(sizeof(cl_ulong), 2 * sizeof(cl_uint))                  },
-    { RAND_GPU_ALGORITHM_PCG6432         , sizeof(cl_ulong)                                                 },
+    { RAND_GPU_ALGORITHM_PCG6432         , sizeof(cl_ulong)                                            },
     { RAND_GPU_ALGORITHM_PHILOX2X32_10   , max(sizeof(cl_ulong), sizeof(cl_uint))                      },
-    { RAND_GPU_ALGORITHM_RAN2            , 35 * sizeof(cl_int)                                              },
-    { RAND_GPU_ALGORITHM_TINYMT64        , 3 * sizeof(cl_ulong) + 2 * sizeof(cl_uint)                       },
+    { RAND_GPU_ALGORITHM_RAN2            , 35 * sizeof(cl_int)                                         },
+    { RAND_GPU_ALGORITHM_TINYMT64        , 3 * sizeof(cl_ulong) + 2 * sizeof(cl_uint)                  },
     { RAND_GPU_ALGORITHM_TYCHE           , max(4 * sizeof(cl_uint), sizeof(cl_ulong))                  },
     { RAND_GPU_ALGORITHM_TYCHE_I         , max(4 * sizeof(cl_uint), sizeof(cl_ulong))                  },
-    { RAND_GPU_ALGORITHM_WELL512         , 17 * sizeof(cl_uint)                                             },
-    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR, sizeof(cl_ulong)                                                 },
+    { RAND_GPU_ALGORITHM_WELL512         , 17 * sizeof(cl_uint)                                        },
+    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR, sizeof(cl_ulong)                                            },
 };
 
 static const unordered_map<rand_gpu_algorithm, const char *> INIT_KERNEL_NAMES = {
@@ -118,6 +118,7 @@ static nanoseconds __compilation_times[N_ALGORITHMS];
 
 static atomic<nanoseconds> __sum_init_time_deleted(nanoseconds::zero());
 static atomic<nanoseconds> __sum_avg_transfer_time_deleted(nanoseconds::zero());
+static atomic<nanoseconds> __sum_avg_calculation_time_deleted(nanoseconds::zero());
 
 static atomic<size_t> __sum_buffer_misses_deleted(0);
 static atomic<size_t> __sum_buffer_switches_deleted(0);
@@ -139,7 +140,7 @@ struct RNG_private
 
         bool ready = true;
         mutex ready_lock;
-        cl::Event ready_event;
+        cl::Event transferred_event, calculated_event;
         condition_variable ready_cond;
 
         system_clock::time_point start_time;
@@ -164,9 +165,11 @@ struct RNG_private
     size_t _buf_offset = 0;
 
     nanoseconds _init_time = nanoseconds::zero();
+    nanoseconds _gpu_calculation_time_total = nanoseconds::zero();
     nanoseconds _gpu_transfer_time_total = nanoseconds::zero();
 
     size_t _n_gpu_transfers = 0;
+    size_t _n_gpu_calculations = 0;
     size_t _n_buffer_switches = 0;
     size_t _n_buffer_misses = 0;
 
@@ -250,7 +253,7 @@ struct RNG_private
         }
 
         // create command queue
-        _queue = cl::CommandQueue(__context, device);
+        _queue = cl::CommandQueue(__context, device, CL_QUEUE_PROFILING_ENABLE);
 
         // get device info
         _max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
@@ -370,10 +373,11 @@ struct RNG_private
 
         // set global variables
         __memory_usage -= _n_buffers * _buffer_size;
-        __sum_avg_transfer_time_deleted += avg_gpu_transfer_time();
-        __sum_init_time_deleted += _init_time;
-        __sum_buffer_switches_deleted += _n_buffer_switches;
-        __sum_buffer_misses_deleted += _n_buffer_misses;
+        __sum_avg_transfer_time_deleted    += avg_gpu_transfer_time();
+        __sum_avg_calculation_time_deleted += avg_gpu_calculation_time();
+        __sum_init_time_deleted            += _init_time;
+        __sum_buffer_switches_deleted      += _n_buffer_switches;
+        __sum_buffer_misses_deleted        += _n_buffer_misses;
         __n_deleted_rngs++;
 
         lock_guard<mutex> rngs_lock(__rngs_lock);
@@ -404,19 +408,26 @@ struct RNG_private
         {
             active_buf.ready = false;
 
-            // enqueue reading data, generating future numbers
             if (_unified_memory)
             {
-                _queue.enqueueNDRangeKernel(active_buf.k_generate, 0, _global_size, cl::NullRange, NULL, &active_buf.ready_event);
+                // calculate next batch of numbers
+                _queue.enqueueNDRangeKernel(active_buf.k_generate, 0, _global_size, cl::NullRange, 
+                                            NULL, &active_buf.calculated_event);
+                active_buf.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &active_buf);
             }
             else
             {
+                // read calculated numbers
                 _queue.enqueueReadBuffer(active_buf.device, CL_FALSE, 0, _buffer_size, active_buf.host,
-                                         NULL, &active_buf.ready_event);
-                _queue.enqueueNDRangeKernel(active_buf.k_generate, cl::NullRange, _global_size);
+                                         NULL, &active_buf.transferred_event);
+                active_buf.transferred_event.setCallback(CL_COMPLETE, transferred, &active_buf);
+
+                // calculate next batch
+                _queue.enqueueNDRangeKernel(active_buf.k_generate, cl::NullRange, _global_size, cl::NullRange,
+                                            NULL, &active_buf.calculated_event);
+                active_buf.calculated_event.setCallback(CL_COMPLETE, calculated, &active_buf);
             }
             active_buf.start_time = system_clock::now();
-            active_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_buf);
 
             // switch active buffer
             _active_buf_id = (_active_buf_id + 1) % _n_buffers;
@@ -427,15 +438,69 @@ struct RNG_private
         return num;
     }
 
-    static void set_flag(cl_event _e, cl_int _s, void *ptr)
+    static void calculated(cl_event e, cl_int _s, void *ptr)
     {
-        // notify that buffer is ready
-        Buffer *buffer = static_cast<Buffer *>(ptr);
-        lock_guard<mutex> lock(buffer->ready_lock);
-        buffer->rng->_gpu_transfer_time_total += system_clock::now() - buffer->start_time;
-        buffer->rng->_n_gpu_transfers++;
+        Buffer *buffer = (Buffer *) ptr;
+        
+        // get calculation time
+        cl_ulong calc_start, calc_end;
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(cl_uint), &calc_start, NULL);
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(cl_uint), &calc_end,   NULL);
+        nanoseconds calc_time(calc_end - calc_start);
+       
+        buffer->rng->_gpu_calculation_time_total += calc_time;
+        buffer->rng->_n_gpu_calculations++;
+    }
+
+    static void transferred(cl_event _e, cl_int _s, void *ptr)
+    {
+        // get current time
+        auto end_time = system_clock::now();
+
+        Buffer *buffer = (Buffer *) ptr;
+        lock_guard<mutex> lock(buffer->ready_lock);        
+
+        // notify main thread
         buffer->ready = true;
         buffer->ready_cond.notify_one();
+
+        // update transfer time
+        buffer->rng->_gpu_transfer_time_total += end_time - buffer->start_time;
+        buffer->rng->_n_gpu_transfers++;
+    }
+
+    static void calculated_unified(cl_event e, cl_int _s, void *ptr)
+    {
+        // get current time
+        auto end_time = system_clock::now();
+
+        Buffer *buffer = (Buffer *) ptr;
+        lock_guard<mutex> lock(buffer->ready_lock);        
+
+        // get calculation time
+        cl_ulong calc_start, calc_end;
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(cl_uint), &calc_start, NULL);
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(cl_uint), &calc_end,   NULL);
+
+        // notify main thread
+        buffer->ready = true;
+        buffer->ready_cond.notify_one();
+
+        nanoseconds calc_time(calc_end - calc_start);
+
+        // update calculation and transfer time
+        buffer->rng->_gpu_calculation_time_total += calc_time;
+        buffer->rng->_gpu_transfer_time_total    += end_time - buffer->start_time - calc_time;
+        buffer->rng->_n_gpu_transfers++;
+        buffer->rng->_n_gpu_calculations++;
+    }
+    
+    nanoseconds avg_gpu_calculation_time() const
+    {
+        if (_n_gpu_calculations > 0)
+            return _gpu_calculation_time_total / _n_gpu_calculations;
+        else
+            return chrono::nanoseconds::zero();
     }
 
     nanoseconds avg_gpu_transfer_time() const
@@ -513,17 +578,19 @@ void rand_gpu_delete_all()
     }
 }
 
-size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng)           { return ((const RNG_private *) rng)->_buffer_size; }
-size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng)       { return ((const RNG_private *) rng)->_n_buffer_switches; }
-size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng)         { return ((const RNG_private *) rng)->_n_buffer_misses; }
-float  rand_gpu_rng_init_time(const rand_gpu_rng *rng)             { return ((const RNG_private *) rng)->_init_time.count() / MILLION; }
-float  rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng) { return ((const RNG_private *) rng)->avg_gpu_transfer_time().count() / MILLION; }
+size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng)              { return ((const RNG_private *) rng)->_buffer_size; }
+size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng)          { return ((const RNG_private *) rng)->_n_buffer_switches; }
+size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng)            { return ((const RNG_private *) rng)->_n_buffer_misses; }
+float  rand_gpu_rng_init_time(const rand_gpu_rng *rng)                { return ((const RNG_private *) rng)->_init_time.count() / MILLION; }
+float  rand_gpu_rng_avg_gpu_calculation_time(const rand_gpu_rng *rng) { return ((const RNG_private *) rng)->avg_gpu_calculation_time().count() / MILLION; }
+float  rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng)    { return ((const RNG_private *) rng)->avg_gpu_transfer_time().count() / MILLION; }
 
-size_t rand_gpu_memory_usage()          { return __memory_usage; }
-size_t rand_gpu_buffer_switches()       { return rand_gpu::buffer_switches(); }
-size_t rand_gpu_buffer_misses()         { return rand_gpu::buffer_misses(); }
-float  rand_gpu_avg_init_time()         { return rand_gpu::avg_init_time().count() / MILLION; }
-float  rand_gpu_avg_gpu_transfer_time() { return rand_gpu::avg_gpu_transfer_time().count() / MILLION; }
+size_t rand_gpu_memory_usage()             { return __memory_usage; }
+size_t rand_gpu_buffer_switches()          { return rand_gpu::buffer_switches(); }
+size_t rand_gpu_buffer_misses()            { return rand_gpu::buffer_misses(); }
+float  rand_gpu_avg_init_time()            { return rand_gpu::avg_init_time().count() / MILLION; }
+float  rand_gpu_avg_gpu_calculation_time() { return rand_gpu::avg_gpu_calculation_time().count() / MILLION; }
+float  rand_gpu_avg_gpu_transfer_time()    { return rand_gpu::avg_gpu_transfer_time().count() / MILLION; }
 
 float rand_gpu_compilation_time(rand_gpu_algorithm algorithm) { return __compilation_times[algorithm].count() / MILLION; }
 const char *rand_gpu_algorithm_name(rand_gpu_algorithm algorithm, bool description) { return rand_gpu::algorithm_name(algorithm, description); }
@@ -610,6 +677,12 @@ namespace rand_gpu
     }
 
     template <rand_gpu_algorithm A>
+    std::chrono::nanoseconds RNG<A>::avg_gpu_calculation_time() const
+    {
+        return d_ptr_->avg_gpu_calculation_time();
+    }
+
+    template <rand_gpu_algorithm A>
     std::chrono::nanoseconds RNG<A>::avg_gpu_transfer_time() const
     {
         return d_ptr_->avg_gpu_transfer_time();
@@ -620,6 +693,22 @@ namespace rand_gpu
         return __memory_usage;
     }
 
+
+    nanoseconds avg_gpu_calculation_time()
+    {
+        nanoseconds sum(0);
+        lock_guard<mutex> lock(__rngs_lock);
+
+        // add the averages of active RNGs
+        for (RNG_private *rng : __rngs)
+        {
+            sum += rng->avg_gpu_calculation_time();
+        }
+
+        // add the averages of deleted RNGs
+        sum += __sum_avg_calculation_time_deleted.load();
+        return sum / (__rngs.size() + __n_deleted_rngs);
+    }
 
     nanoseconds avg_gpu_transfer_time()
     {
@@ -707,7 +796,7 @@ namespace rand_gpu
             "TYCHE",
             "TYCHE_I",
             "WELL512",
-            "XORSHIFT6432STAR",
+            "XORSHIFT6432*",
         };
 
         const char *descriptions[] = {

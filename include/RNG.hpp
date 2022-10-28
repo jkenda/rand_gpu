@@ -88,6 +88,11 @@ namespace rand_gpu
         /**
          * @brief Return average GPU transfer time.
          */
+        std::chrono::nanoseconds avg_gpu_calculation_time() const;
+
+        /**
+         * @brief Return average GPU transfer time.
+         */
         std::chrono::nanoseconds avg_gpu_transfer_time() const;
 
         // deleted copy constructor and assignment operator
@@ -119,6 +124,11 @@ namespace rand_gpu
      * @brief Return average init time of all RNGs.
      */
     std::chrono::nanoseconds avg_init_time();
+
+    /**
+     * @brief Return average GPU transfer time of all RNGs.
+     */
+    std::chrono::nanoseconds avg_gpu_calculation_time();
 
     /**
      * @brief Return average GPU transfer time of all RNGs.
