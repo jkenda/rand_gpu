@@ -26,7 +26,7 @@ int main(int argc, char **argv)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    rand_gpu_rng *rng = rand_gpu_new(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
+    rand_gpu_rng *rng = rand_gpu_new(RAND_GPU_ALGORITHM_LFIB, n_buffers, multi);
 
     long cnt = 0;
 
@@ -42,6 +42,8 @@ int main(int argc, char **argv)
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     float time_lib = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
     printf("%lu misses\n", rand_gpu_rng_buffer_misses(rng));
+    printf("avg calculation time: %e ms\n", rand_gpu_rng_avg_gpu_calculation_time(rng) / (float) 1000);
+    printf("avg transfer time:    %e ms\n", rand_gpu_rng_avg_gpu_transfer_time(rng) / (float) 1000);
     printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, ABS(pi_lib - M_PI), time_lib);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);

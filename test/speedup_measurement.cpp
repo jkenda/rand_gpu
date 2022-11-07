@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <array>
 
 #define C 0
 #define CPP 1
@@ -13,7 +14,7 @@
 #define DBL 1
 
 #pragma GCC diagnostic ignored "-Wunused-variable"
-#define SAMPLES 10
+#define SAMPLES 5
 
 struct parameters
 {
@@ -36,7 +37,9 @@ using chrono::nanoseconds;
 using chrono::steady_clock;
 
 static const int N_ALGORITHMS = RAND_GPU_ALGORITHM_XORSHIFT6432STAR - RAND_GPU_ALGORITHM_KISS09 + 1;
-static const duration<uint64_t> DURATION(2s);
+static const duration<uint64_t> DURATION(1s);
+static const array<int, 12> multipliers { 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 };
+static const array<int, 7> n_bufs { 2, 3, 4, 6, 8, 12, 16 };
 
 
 mt19937 generator32(steady_clock::now().time_since_epoch().count());
@@ -174,17 +177,20 @@ int main(int argc, char **argv)
 
     for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
     {
-        cout << "algorithm,multi,2 buffers,4 buffers,8 buffers,16 buffers\n";
-        for (int multi = 1; multi <= 64; multi *= 2)
+        cout << "algorithm,multi";
+        for (int n_buffers : n_bufs) cout << ',' << n_buffers << " buffers";
+        cout << '\n';
+
+        for (int multi : multipliers)
         {
             printf("%s,%02d", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), multi);
-            for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
+            for (int n_buffers : n_bufs)
             {
                 rand_gpu_rng *rng = rand_gpu_new((rand_gpu_algorithm) algorithm, n_buffers, multi);
                 printf(",%.5f", rand_gpu_rng_init_time(rng));
                 rand_gpu_delete_all();
             }
-            cout << '\n';
+            cout << endl;
         }
         cout << endl;
     }
@@ -220,9 +226,9 @@ int main(int argc, char **argv)
     {
         cout << "algorithm,n_buffers,multi,0 %,10 %,20 %,30 %,40 %,50 %,60 %,70 %,80 %,90 %,100 %\n";
 
-        for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
+        for (int n_buffers : n_bufs)
         {
-            for (int multi = 1; multi <= 64; multi *= 2)
+            for (int multi : multipliers)
             {
                 printf("%s,%02d,%02d", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), n_buffers, multi);
                 fflush(stdout);
@@ -231,19 +237,19 @@ int main(int argc, char **argv)
                 
                 for (int i = 0; i <= 10; i++)
                 {
-                    int percent_calc = i * 10;
+                    int percent_gen = i * 10;
                     uint64_t num_gpu = (type == FLT) 
-                        ? num_generated_gpu<float>(DURATION, percent_calc, rng)
-                        : num_generated_gpu<double>(DURATION, percent_calc, rng);
+                        ? num_generated_gpu<float>(DURATION, percent_gen, rng)
+                        : num_generated_gpu<double>(DURATION, percent_gen, rng);
 
                     float speedup_current = num_gpu / (float) num_cpu[i];
-
-                    printf(",%.5f", speedup_current);
-                    flush(cout);
 
                     int n_buffers_offset = log2(n_buffers) - 1;
                     int multi_offset = log2(multi);
                     speedup[algorithm][n_buffers_offset][multi_offset][i] = speedup_current;
+
+                    printf(",%7f", speedup_current);
+                    flush(cout);
                 }
                 cout << '\n';
                 rand_gpu_delete(rng);
@@ -264,9 +270,9 @@ int main(int argc, char **argv)
 
         for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
         {
-            for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
+            for (int n_buffers : n_bufs)
             {
-                for (int multi = 1; multi <= 64; multi *= 2)
+                for (int multi : multipliers)
                 {
                     int n_buffers_offset = log2(n_buffers) - 1;
                     int multi_offset = log2(multi);
@@ -301,9 +307,9 @@ int main(int argc, char **argv)
     {
         float best_speedup = 0;
 
-        for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
+        for (int n_buffers : n_bufs)
         {
-            for (int multi = 1; multi <= 64; multi *= 2)
+            for (int multi : multipliers)
             {
                 int n_buffers_offset = log2(n_buffers) - 1;
                 int multi_offset = log2(multi);
@@ -343,14 +349,17 @@ int main(int argc, char **argv)
 
     for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
     {
-        cout << "algorithm,multi,2 buffers,4 buffers,8 buffers,16 buffers\n";
-        for (int multi = 1; multi <= 64; multi *= 2)
+        cout << "algorithm,multi";
+        for (int n_buffers : n_bufs) cout << ',' << n_buffers << " buffers";
+        cout << '\n';
+
+        for (int multi : multipliers)
         {
             int multi_offset = log2(multi);
             printf("%s,%02d", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), multi);
-            for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
+            for (int n_buffers : n_bufs)
             {
-            int n_buffers_offset = log2(n_buffers) - 1;
+                int n_buffers_offset = log2(n_buffers) - 1;
                 float speedup_current = speedup[algorithm][n_buffers_offset][multi_offset][5];
                 printf(",%.5f", speedup_current);
             }

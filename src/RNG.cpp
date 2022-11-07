@@ -12,9 +12,12 @@
 #include "../include/RNG.hpp"
 #include "../include/rand_gpu.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <mutex>
 #include <condition_variable>
 #include <random>
@@ -23,29 +26,18 @@
 #include <atomic>
 #include <chrono>
 
-#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
-#define CL_TARGET_OPENCL_VERSION 120
+#define CL_MINIMUM_OPENCL_VERSION 100
+#define CL_TARGET_OPENCL_VERSION 300
+#define CL_HPP_MINIMUM_OPENCL_VERSION 100
+#define CL_HPP_TARGET_OPENCL_VERSION 300
 #define __CL_ENABLE_EXCEPTIONS
-#include "include/cl.hpp"
+#define CL_HPP_ENABLE_EXCEPTIONS
+#include "include/opencl.hpp"
 #include "../kernel.hpp"
 
 using namespace std;
 using chrono::nanoseconds;
 using chrono::system_clock;
-
-struct Buffer
-{
-    uint8_t *data = nullptr;
-    bool ready = true;
-    mutex ready_lock;
-    cl::Event ready_event;
-    condition_variable ready_cond;
-    system_clock::time_point start_time;
-    RNG_private *rng;
-
-    ~Buffer() { delete[] data; }
-    inline void alloc(const size_t size) { data = new uint8_t[size]; }
-};
 
 atomic<nanoseconds> &operator+=(atomic<nanoseconds> &a, nanoseconds b)
 {
@@ -54,58 +46,58 @@ atomic<nanoseconds> &operator+=(atomic<nanoseconds> &a, nanoseconds b)
 }
 
 
-static const size_t STATE_SIZES[] = {
-    4 * sizeof(cl_ulong),                                        // KISS09,
-    2 * sizeof(cl_ulong),                                        // LCG12864,
-    17 * sizeof(cl_ulong) + 2 * sizeof(cl_char),                 // LFIB,
-    6 * sizeof(cl_long),                                         // MRG63K3A,
-    max(sizeof(cl_ulong) + 2 * sizeof(cl_uint2), sizeof(ulong)), // MSWS,
-    624 * sizeof(cl_uint) + sizeof(cl_int),                      // MT19937,
-    max(sizeof(cl_ulong), 2 * sizeof(cl_uint)),                  // MWC64X,
-    sizeof(cl_ulong),                                            // PCG6432,
-    max(sizeof(cl_ulong), sizeof(cl_uint)),                      // PHILOX2X32_10,
-    35 * sizeof(cl_int),                                         // RAN2,
-    3 * sizeof(cl_ulong) + 2 * sizeof(cl_uint),                  // TINYMT64,
-    max(4 * sizeof(cl_uint), sizeof(cl_ulong)),                  // TYCHE,
-    max(4 * sizeof(cl_uint), sizeof(cl_ulong)),                  // TYCHE_I,
-    17 * sizeof(cl_uint),                                        // WELL512,
-    sizeof(cl_ulong),                                            // XORSHIFT6432STAR,
+static const unordered_map<rand_gpu_algorithm, size_t> STATE_SIZES = {
+    { RAND_GPU_ALGORITHM_KISS09          , 4 * sizeof(cl_ulong)                                          },
+    { RAND_GPU_ALGORITHM_LCG12864        , 2 * sizeof(cl_ulong)                                          },
+    { RAND_GPU_ALGORITHM_LFIB            , 17 * sizeof(cl_ulong) + 2 * 8                                 },
+    { RAND_GPU_ALGORITHM_MRG63K3A        , 6 * sizeof(cl_long)                                           },
+    { RAND_GPU_ALGORITHM_MSWS            , max(sizeof(cl_ulong), sizeof(cl_uint2)) + 2 * sizeof(cl_uint) },
+    { RAND_GPU_ALGORITHM_MT19937         , 624 * sizeof(cl_uint) + 8                                     },
+    { RAND_GPU_ALGORITHM_MWC64X          , max(sizeof(cl_ulong), 2 * sizeof(cl_uint))                    },
+    { RAND_GPU_ALGORITHM_PCG6432         , sizeof(cl_ulong)                                              },
+    { RAND_GPU_ALGORITHM_PHILOX2X32_10   , max(sizeof(cl_ulong), sizeof(cl_uint))                        },
+    { RAND_GPU_ALGORITHM_RAN2            , 35 * sizeof(cl_int)                                           },
+    { RAND_GPU_ALGORITHM_TINYMT64        , 3 * sizeof(cl_ulong) + 2 * sizeof(cl_uint)                    },
+    { RAND_GPU_ALGORITHM_TYCHE           , max(4 * sizeof(cl_uint), sizeof(cl_ulong))                    },
+    { RAND_GPU_ALGORITHM_TYCHE_I         , max(4 * sizeof(cl_uint), sizeof(cl_ulong))                    },
+    { RAND_GPU_ALGORITHM_WELL512         , 17 * sizeof(cl_uint)                                          },
+    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR, sizeof(cl_ulong)                                              },
 };
 
-static const char *INIT_KERNEL_NAMES[] = {
-    "kiss09_init",           // KISS09,
-    "lcg12864_init",         // LCG12864,
-    "lfib_init",             // LFIB,
-    "mrg63k3a_init",         // MRG63K3A,
-    "msws_init",             // MSWS,
-    "mt19937_init",          // MT19937,
-    "mwc64x_init",           // MWC64X,
-    "pcg6432_init",          // PCG6432,
-    "philox2x32_10_init",    // PHILOX2X32_10,
-    "ran2_init",             // RAN2,
-    "tinymt64_init",         // TINYMT64,
-    "tyche_init",            // TYCHE,
-    "tyche_i_init",          // TYCHE_I,
-    "well512_init",          // WELL512,
-    "xorshift6432star_init", // XORSHIFT6432STAR,
+static const unordered_map<rand_gpu_algorithm, const char *> INIT_KERNEL_NAMES = {
+    { RAND_GPU_ALGORITHM_KISS09          , "kiss09_init"            },
+    { RAND_GPU_ALGORITHM_LCG12864        , "lcg12864_init"          },
+    { RAND_GPU_ALGORITHM_LFIB            , "lfib_init"              },
+    { RAND_GPU_ALGORITHM_MRG63K3A        , "mrg63k3a_init"          },
+    { RAND_GPU_ALGORITHM_MSWS            , "msws_init"              },
+    { RAND_GPU_ALGORITHM_MT19937         , "mt19937_init"           },
+    { RAND_GPU_ALGORITHM_MWC64X          , "mwc64x_init"            },
+    { RAND_GPU_ALGORITHM_PCG6432         , "pcg6432_init"           },
+    { RAND_GPU_ALGORITHM_PHILOX2X32_10   , "philox2x32_10_init"     },
+    { RAND_GPU_ALGORITHM_RAN2            , "ran2_init"              },
+    { RAND_GPU_ALGORITHM_TINYMT64        , "tinymt64_init"          },
+    { RAND_GPU_ALGORITHM_TYCHE           , "tyche_init"             },
+    { RAND_GPU_ALGORITHM_TYCHE_I         , "tyche_i_init"           },
+    { RAND_GPU_ALGORITHM_WELL512         , "well512_init"           },
+    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR, "xorshift6432star_init"  },
 };
 
-static const char *GENERATE_KERNEL_NAMES[] = {
-    "kiss09_generate",           // KISS09,
-    "lcg12864_generate",         // LCG12864,
-    "lfib_generate",             // LFIB,
-    "mrg63k3a_generate",         // MRG63K3A,
-    "msws_generate",             // MSWS,
-    "mt19937_generate",          // MT19937,
-    "mwc64x_generate",           // MWC64X,
-    "pcg6432_generate",          // PCG6432,
-    "philox2x32_10_generate",    // PHILOX2X32_10,
-    "ran2_generate",             // RAN2,
-    "tinymt64_generate",         // TINYMT64,
-    "tyche_generate",            // TYCHE,
-    "tyche_i_generate",          // TYCHE_I,
-    "well512_generate",          // WELL512,
-    "xorshift6432star_generate", // XORSHIFT6432STAR,
+static const unordered_map<rand_gpu_algorithm, const char *> GENERATE_KERNEL_NAMES = {
+    { RAND_GPU_ALGORITHM_KISS09          , "kiss09_generate"            },
+    { RAND_GPU_ALGORITHM_LCG12864        , "lcg12864_generate"          },
+    { RAND_GPU_ALGORITHM_LFIB            , "lfib_generate"              },
+    { RAND_GPU_ALGORITHM_MRG63K3A        , "mrg63k3a_generate"          },
+    { RAND_GPU_ALGORITHM_MSWS            , "msws_generate"              },
+    { RAND_GPU_ALGORITHM_MT19937         , "mt19937_generate"           },
+    { RAND_GPU_ALGORITHM_MWC64X          , "mwc64x_generate"            },
+    { RAND_GPU_ALGORITHM_PCG6432         , "pcg6432_generate"           },
+    { RAND_GPU_ALGORITHM_PHILOX2X32_10   , "philox2x32_10_generate"     },
+    { RAND_GPU_ALGORITHM_RAN2            , "ran2_generate"              },
+    { RAND_GPU_ALGORITHM_TINYMT64        ,  "tinymt64_generate"         },
+    { RAND_GPU_ALGORITHM_TYCHE           ,  "tyche_generate"            },
+    { RAND_GPU_ALGORITHM_TYCHE_I         ,  "tyche_i_generate"          },
+    { RAND_GPU_ALGORITHM_WELL512         ,  "well512_generate"          },
+    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR,  "xorshift6432star_generate" },
 };
 
 static const float FLOAT_MULTIPLIER = 1.0f / static_cast<float>(UINT32_MAX);
@@ -130,6 +122,7 @@ static nanoseconds __compilation_times[N_ALGORITHMS];
 
 static atomic<nanoseconds> __sum_init_time_deleted(nanoseconds::zero());
 static atomic<nanoseconds> __sum_avg_transfer_time_deleted(nanoseconds::zero());
+static atomic<nanoseconds> __sum_avg_calculation_time_deleted(nanoseconds::zero());
 
 static atomic<size_t> __sum_buffer_misses_deleted(0);
 static atomic<size_t> __sum_buffer_switches_deleted(0);
@@ -142,39 +135,53 @@ static unordered_set<RNG_private *> __rngs;
 
 struct RNG_private
 {
-    cl::CommandQueue _queue;
-    cl::Kernel _k_generate;
-    cl::Buffer _states_buffer;
-    cl::Buffer _device_buffer;
+    struct Buffer
+    {
+        cl::Buffer device;
+        uint8_t *host = nullptr;
 
-    uint32_t _max_cu;
-    size_t _max_wg_size;
+        cl::Kernel k_generate;
+
+        bool ready = true;
+        mutex ready_lock;
+        cl::Event transferred_event, calculated_event;
+        condition_variable ready_cond;
+
+        system_clock::time_point start_time;
+        RNG_private *rng;
+    };
+
+    cl::CommandQueue _queue;
+    cl::Buffer _state_buf;
 
     cl::NDRange _global_size;
     size_t _buffer_size;
     size_t _buf_limit;
+    bool _unified_memory;
 
     const size_t _n_buffers;
-    vector<Buffer> _host_buffers;
-    uint_fast8_t _active_buf = 0;
+    vector<Buffer> _buffers;
+    uint_fast8_t _active_buf_id = 0;
 
     uint_fast64_t _buf_offset = 0;
 
     nanoseconds _init_time = nanoseconds::zero();
+    nanoseconds _gpu_calculation_time_total = nanoseconds::zero();
     nanoseconds _gpu_transfer_time_total = nanoseconds::zero();
 
-    uint_fast64_t _n_gpu_transfers = 0;
-    uint_fast64_t _n_buffer_switches = 0;
-    uint_fast64_t _n_buffer_misses = 0;
+    atomic<size_t> _n_gpu_transfers= 0;
+    atomic<size_t> _n_gpu_calculations = 0;
+    atomic<size_t> _n_buffer_switches = 0;
+    atomic<size_t> _n_buffer_misses = 0;
 
 
     RNG_private(size_t n_buffers = 2, size_t multi = 1, rand_gpu_algorithm algorithm = RAND_GPU_ALGORITHM_TYCHE,
         bool use_custom_seed = false, uint64_t custom_seed = 0)
     :
         _n_buffers(max(n_buffers, 2LU)),
-        _host_buffers(max(n_buffers, 2LU))
+        _buffers(max(n_buffers, 2LU))
     {
-        cl_ulong seed;
+        uint64_t seed;
         cl::Device device;
         cl::Program &program = __programs[algorithm];
         auto start = chrono::system_clock::now();
@@ -247,51 +254,61 @@ struct RNG_private
         }
 
         // create command queue
-        _queue = cl::CommandQueue(__context, device);
+        _queue = cl::CommandQueue(__context, device, CL_QUEUE_PROFILING_ENABLE);
 
         // get device info
-        _max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
-        _max_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
+        cl::Kernel temp(program, INIT_KERNEL_NAMES.at(algorithm));
+        size_t max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
+        size_t optimal_wg_size = temp.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
+        size_t maximal_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
+        size_t max_mem  = device.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>();
+        _unified_memory = device.getInfo<CL_DEVICE_HOST_UNIFIED_MEMORY>();
 
-        _global_size = cl::NDRange(max(multi, 1LU) * _max_cu * _max_wg_size);
-        _buffer_size = _global_size[0] * sizeof(cl_ulong);
-        _buf_limit = _buffer_size - sizeof(long double);
+        // calculate optimal buffer size
+        size_t local_size  = min(optimal_wg_size, maximal_wg_size);
+        size_t global_size = max(multi, 1UL) * max_cu * local_size;
+        _buffer_size = global_size * sizeof(uint64_t);
+        _global_size = cl::NDRange(_buffer_size / sizeof(uint64_t));
+        _buf_limit = _buffer_size - sizeof(uint64_t);
 
-        // create host and device buffers
-        _states_buffer = cl::Buffer(__context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _global_size[0] * STATE_SIZES[algorithm]);
-        _device_buffer = cl::Buffer(__context, CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY, _buffer_size);
+        // resize host buffers, create device buffers
+        size_t state_buf_size = _global_size[0] * STATE_SIZES.at(algorithm);
+        size_t seeds_buf_size = sizeof(uint64_t);
+        if (algorithm != RAND_GPU_ALGORITHM_TYCHE && algorithm != RAND_GPU_ALGORITHM_TYCHE_I)
+            seeds_buf_size = _global_size[0] * (algorithm == RAND_GPU_ALGORITHM_MT19937 ? sizeof(cl_uint) : sizeof(cl_ulong));
 
-        for (Buffer &buf : _host_buffers)
+        if (state_buf_size + seeds_buf_size + _buffer_size > max_mem)
         {
-            buf.rng = this;
-            buf.alloc(_buffer_size);
+            throw runtime_error("Out of memory - pick smaller num_buffers or multi");
         }
 
+        _state_buf = cl::Buffer(__context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, state_buf_size);
+
         // initialize RNG
-        cl::Kernel k_init(program, INIT_KERNEL_NAMES[algorithm]);
+        cl::Kernel k_init(program, INIT_KERNEL_NAMES.at(algorithm));
         cl::Event initialized;
-        k_init.setArg(0, _states_buffer);
+        k_init.setArg(0, _state_buf);
+
+        cl::Buffer cl_seeds;
 
         switch (algorithm)
         {
         case RAND_GPU_ALGORITHM_TYCHE:
         case RAND_GPU_ALGORITHM_TYCHE_I:
             // a single seed for all threads
-            k_init.setArg(1, sizeof(cl_ulong), &seed);
+            k_init.setArg(1, sizeof(uint64_t), &seed);
             _queue.enqueueNDRangeKernel(k_init, 0, _global_size);
             break;
         case RAND_GPU_ALGORITHM_MT19937:
             // 32-bit seeds
             {
-                mt19937 seed_generator(seed);
-                seed_generator.discard(_global_size[0]);
+                ranlux48 seed_generator(seed);
                 vector<uint32_t> seeds(_global_size[0]);
                 for (size_t i = 0; i < _global_size[0]; i++)
                     seeds[i] = seed_generator();
-                cl::Buffer cl_seeds(_queue, seeds.rbegin(), seeds.rend(), true, false);
+                cl_seeds = cl::Buffer(__context, seeds.begin(), seeds.end(), true, true);
                 k_init.setArg(1, cl_seeds);
-                cl::Event e;
-                _queue.enqueueNDRangeKernel(k_init, 0, _global_size);
+                _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
             }
             break;
         default:
@@ -301,26 +318,40 @@ struct RNG_private
                 vector<uint64_t> seeds(_global_size[0]);
                 for (size_t i = 0; i < _global_size[0]; i++)
                     seeds[i] = seed_generator();
-                cl::Buffer cl_seeds(_queue, seeds.begin(), seeds.end(), true, true);
+                cl_seeds = cl::Buffer(__context, seeds.begin(), seeds.end(), true, true);
                 k_init.setArg(1, cl_seeds);
                 _queue.enqueueNDRangeKernel(k_init, 0, _global_size);
             }
         }
 
-        // create kernel
-        _k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES[algorithm]);
-        _k_generate.setArg(0, _states_buffer);
-        _k_generate.setArg(1, _device_buffer);
-
-        // fill all buffers
-        for (size_t i = 0; i < _n_buffers; i++)
+        // create and bind buffers
+        for (Buffer &buffer : _buffers)
         {
-            _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
-            _queue.enqueueReadBuffer(_device_buffer, true, 0, _buffer_size, _host_buffers[i].data);
+            buffer.device = cl::Buffer(__context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, _buffer_size);
+            buffer.host = (uint8_t *) _queue.enqueueMapBuffer(buffer.device, true, CL_MAP_READ, 0, _buffer_size);
+            buffer.rng = this;
         }
 
-        // generate future numbers
-        _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
+        // create kernels for buffers
+        for (Buffer &buffer : _buffers)
+        {
+            buffer.k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES.at(algorithm));
+            buffer.k_generate.setArg(0, _state_buf);
+            buffer.k_generate.setArg(1, buffer.device);
+        }
+
+        // generate 1st batch of numbers
+        for (const Buffer &buffer : _buffers)
+        {
+            _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size);
+            if (!_unified_memory) {
+                _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host);
+                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
+            }
+        }
+
+        _queue.flush();
+        _queue.finish();
 
         _queue.flush();
         _queue.finish();
@@ -334,11 +365,19 @@ struct RNG_private
 
     ~RNG_private()
     {
-        // ensure set_flag won't try to access a deleted Buffer
-        for (Buffer &buffer : _host_buffers)
+        for (Buffer &buffer : _buffers)
         {
+            // ensure set_flag won't try to access a deleted Buffer
             unique_lock<mutex> lock(buffer.ready_lock);
             buffer.ready_cond.wait(lock, [&] { return buffer.ready; });
+
+	    if (!_unified_memory)
+	    {
+                while (buffer.rng->_n_gpu_calculations < buffer.rng->_n_gpu_transfers);
+            }
+
+            // unmap host_ptr
+            _queue.enqueueUnmapMemObject(buffer.device, buffer.host);
         }
 
         _queue.flush();
@@ -346,10 +385,11 @@ struct RNG_private
 
         // set global variables
         __memory_usage -= _n_buffers * _buffer_size;
-        __sum_avg_transfer_time_deleted += avg_gpu_transfer_time();
-        __sum_init_time_deleted += _init_time;
-        __sum_buffer_switches_deleted += _n_buffer_switches;
-        __sum_buffer_misses_deleted += _n_buffer_misses;
+        __sum_avg_transfer_time_deleted    += avg_gpu_transfer_time();
+        __sum_avg_calculation_time_deleted += avg_gpu_calculation_time();
+        __sum_init_time_deleted            += _init_time;
+        __sum_buffer_switches_deleted      += _n_buffer_switches;
+        __sum_buffer_misses_deleted        += _n_buffer_misses;
         __n_deleted_rngs++;
 
         lock_guard<mutex> rngs_lock(__rngs_lock);
@@ -360,34 +400,49 @@ struct RNG_private
     template <typename T>
     T get_random()
     {
-        Buffer &active_host_buf = _host_buffers[_active_buf];
+        Buffer &active_buf = _buffers[_active_buf_id];
 
         // just switched buffers - wait for buffer to be ready
         if (_buf_offset == 0)
         {
-            unique_lock<mutex> lock(active_host_buf.ready_lock);
-            if (!active_host_buf.ready) _n_buffer_misses++;
-            active_host_buf.ready_cond.wait(lock, [&] { return active_host_buf.ready; });
+            unique_lock<mutex> lock(active_buf.ready_lock);
+            if (!active_buf.ready) _n_buffer_misses++;
+            active_buf.ready_cond.wait(lock, [&] { return active_buf.ready; });
         }
 
         // retrieve number from buffer
         T num;
-        memcpy(&num, &active_host_buf.data[_buf_offset], sizeof(T));
+        memcpy(&num, &active_buf.host[_buf_offset], sizeof(T));
         _buf_offset += sizeof(T);
 
         // out of numbers in current buffer
         if (_buf_offset >= _buf_limit)
         {
-            active_host_buf.ready = false;
+            active_buf.ready = false;
 
-            // enqueue reading data, generating future numbers
-            _queue.enqueueReadBuffer(_device_buffer, false, 0, _buffer_size, active_host_buf.data, nullptr, &active_host_buf.ready_event);
-            _queue.enqueueNDRangeKernel(_k_generate, 0, _global_size);
-            active_host_buf.start_time = system_clock::now();
-            active_host_buf.ready_event.setCallback(CL_COMPLETE, set_flag, &active_host_buf);
+            if (_unified_memory)
+            {
+                // calculate next batch of numbers
+                _queue.enqueueNDRangeKernel(active_buf.k_generate, 0, _global_size, cl::NullRange, 
+                                            NULL, &active_buf.calculated_event);
+                active_buf.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &active_buf);
+            }
+            else
+            {
+                // read calculated numbers
+                _queue.enqueueReadBuffer(active_buf.device, false, 0, _buffer_size, active_buf.host,
+                                         NULL, &active_buf.transferred_event);
+                active_buf.transferred_event.setCallback(CL_COMPLETE, transferred, &active_buf);
+
+                // calculate next batch
+                _queue.enqueueNDRangeKernel(active_buf.k_generate, cl::NullRange, _global_size, cl::NullRange,
+                                            NULL, &active_buf.calculated_event);
+                active_buf.calculated_event.setCallback(CL_COMPLETE, calculated, &active_buf);
+            }
+            active_buf.start_time = system_clock::now();
 
             // switch active buffer
-            _active_buf = (_active_buf + 1) % _n_buffers;
+            _active_buf_id = (_active_buf_id + 1) % _n_buffers;
             _buf_offset = 0;
             _n_buffer_switches++;
         }
@@ -395,21 +450,75 @@ struct RNG_private
         return num;
     }
 
-    static void set_flag(cl_event _e, cl_int _s, void *ptr)
+    static void calculated(cl_event e, cl_int _s, void *ptr)
     {
-        // notify that buffer is ready
-        Buffer *buffer = static_cast<Buffer *>(ptr);
-        lock_guard<mutex> lock(buffer->ready_lock);
-        buffer->rng->_gpu_transfer_time_total += system_clock::now() - buffer->start_time;
+        Buffer *buffer = (Buffer *) ptr;
+        
+        // get calculation time
+        uint64_t calc_start, calc_end;
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(uint32_t), &calc_start, NULL);
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(uint32_t), &calc_end,   NULL);
+        nanoseconds calc_time(calc_end - calc_start);
+	       
+        buffer->rng->_gpu_calculation_time_total += calc_time;
+        buffer->rng->_n_gpu_calculations++;
+    }
+
+    static void transferred(cl_event _e, cl_int _s, void *ptr)
+    {
+        // get current time
+        auto end_time = system_clock::now();
+
+        Buffer *buffer = (Buffer *) ptr;
+        lock_guard<mutex> lock(buffer->ready_lock);        
+
+        // update transfer time
+        buffer->rng->_gpu_transfer_time_total += end_time - buffer->start_time;
         buffer->rng->_n_gpu_transfers++;
+
+        // notify main thread
         buffer->ready = true;
         buffer->ready_cond.notify_one();
+    }
+
+    static void calculated_unified(cl_event e, cl_int _s, void *ptr)
+    {
+        // get current time
+        auto end_time = system_clock::now();
+
+        Buffer *buffer = (Buffer *) ptr;
+        lock_guard<mutex> lock(buffer->ready_lock);        
+
+        // get calculation time
+        uint64_t calc_start, calc_end;
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(uint32_t), &calc_start, NULL);
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(uint32_t), &calc_end,   NULL);
+
+        // notify main thread
+        buffer->ready = true;
+        buffer->ready_cond.notify_one();
+
+        nanoseconds calc_time(calc_end - calc_start);
+
+        // update calculation and transfer time
+        buffer->rng->_gpu_calculation_time_total += calc_time;
+        buffer->rng->_gpu_transfer_time_total    += end_time - buffer->start_time - calc_time;
+        buffer->rng->_n_gpu_transfers++;
+        buffer->rng->_n_gpu_calculations++;
+    }
+    
+    nanoseconds avg_gpu_calculation_time() const
+    {
+        if (_n_gpu_calculations > 0)
+            return _gpu_calculation_time_total / _n_gpu_calculations.load();
+        else
+            return chrono::nanoseconds::zero();
     }
 
     nanoseconds avg_gpu_transfer_time() const
     {
         if (_n_gpu_transfers > 0)
-            return _gpu_transfer_time_total / _n_gpu_transfers;
+            return _gpu_transfer_time_total / _n_gpu_transfers.load();
         else
             return chrono::nanoseconds::zero();
     }
@@ -481,17 +590,19 @@ void rand_gpu_delete_all()
     }
 }
 
-size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng)           { return ((const RNG_private *) rng)->_buffer_size; }
-size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng)       { return ((const RNG_private *) rng)->_n_buffer_switches; }
-size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng)         { return ((const RNG_private *) rng)->_n_buffer_misses; }
-float  rand_gpu_rng_init_time(const rand_gpu_rng *rng)             { return ((const RNG_private *) rng)->_init_time.count() / MILLION; }
-float  rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng) { return ((const RNG_private *) rng)->avg_gpu_transfer_time().count() / MILLION; }
+size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng)              { return ((const RNG_private *) rng)->_buffer_size; }
+size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng)          { return ((const RNG_private *) rng)->_n_buffer_switches; }
+size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng)            { return ((const RNG_private *) rng)->_n_buffer_misses; }
+float  rand_gpu_rng_init_time(const rand_gpu_rng *rng)                { return ((const RNG_private *) rng)->_init_time.count() / MILLION; }
+float  rand_gpu_rng_avg_gpu_calculation_time(const rand_gpu_rng *rng) { return ((const RNG_private *) rng)->avg_gpu_calculation_time().count() / MILLION; }
+float  rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng)    { return ((const RNG_private *) rng)->avg_gpu_transfer_time().count() / MILLION; }
 
-size_t rand_gpu_memory_usage()          { return __memory_usage; }
-size_t rand_gpu_buffer_switches()       { return rand_gpu::buffer_switches(); }
-size_t rand_gpu_buffer_misses()         { return rand_gpu::buffer_misses(); }
-float  rand_gpu_avg_init_time()         { return rand_gpu::avg_init_time().count() / MILLION; }
-float  rand_gpu_avg_gpu_transfer_time() { return rand_gpu::avg_gpu_transfer_time().count() / MILLION; }
+size_t rand_gpu_memory_usage()             { return __memory_usage; }
+size_t rand_gpu_buffer_switches()          { return rand_gpu::buffer_switches(); }
+size_t rand_gpu_buffer_misses()            { return rand_gpu::buffer_misses(); }
+float  rand_gpu_avg_init_time()            { return rand_gpu::avg_init_time().count() / MILLION; }
+float  rand_gpu_avg_gpu_calculation_time() { return rand_gpu::avg_gpu_calculation_time().count() / MILLION; }
+float  rand_gpu_avg_gpu_transfer_time()    { return rand_gpu::avg_gpu_transfer_time().count() / MILLION; }
 
 float rand_gpu_compilation_time(rand_gpu_algorithm algorithm) { return __compilation_times[algorithm].count() / MILLION; }
 const char *rand_gpu_algorithm_name(rand_gpu_algorithm algorithm, bool description) { return rand_gpu::algorithm_name(algorithm, description); }
@@ -538,6 +649,7 @@ namespace rand_gpu
     template <rand_gpu_algorithm A>
     RNG<A>::~RNG()
     {
+        delete d_ptr_;
     }
 
     template <rand_gpu_algorithm A>
@@ -577,6 +689,12 @@ namespace rand_gpu
     }
 
     template <rand_gpu_algorithm A>
+    std::chrono::nanoseconds RNG<A>::avg_gpu_calculation_time() const
+    {
+        return d_ptr_->avg_gpu_calculation_time();
+    }
+
+    template <rand_gpu_algorithm A>
     std::chrono::nanoseconds RNG<A>::avg_gpu_transfer_time() const
     {
         return d_ptr_->avg_gpu_transfer_time();
@@ -587,6 +705,22 @@ namespace rand_gpu
         return __memory_usage;
     }
 
+
+    nanoseconds avg_gpu_calculation_time()
+    {
+        nanoseconds sum(0);
+        lock_guard<mutex> lock(__rngs_lock);
+
+        // add the averages of active RNGs
+        for (RNG_private *rng : __rngs)
+        {
+            sum += rng->avg_gpu_calculation_time();
+        }
+
+        // add the averages of deleted RNGs
+        sum += __sum_avg_calculation_time_deleted.load();
+        return sum / (__rngs.size() + __n_deleted_rngs);
+    }
 
     nanoseconds avg_gpu_transfer_time()
     {
@@ -674,7 +808,7 @@ namespace rand_gpu
             "TYCHE",
             "TYCHE_I",
             "WELL512",
-            "XORSHIFT6432STAR",
+            "XORSHIFT6432*",
         };
 
         const char *descriptions[] = {

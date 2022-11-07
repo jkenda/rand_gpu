@@ -1,10 +1,13 @@
 #include <iostream>
 #include <string>
 
-#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_TARGET_OPENCL_VERSION 120
+#define CL_MINIMUM_OPENCL_VERSION 100
+#define CL_HPP_MINIMUM_OPENCL_VERSION 100
+#define CL_HPP_TARGET_OPENCL_VERSION 120
 #define __CL_ENABLE_EXCEPTIONS
-#include "../src/include/cl.hpp"
+#define CL_HPP_ENABLE_EXCEPTIONS
+#include "../src/include/opencl.hpp"
 #include "../kernel.hpp"
 
 using namespace std;

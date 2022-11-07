@@ -1,20 +1,18 @@
 CC= gcc # clang
 CPPC= g++ # clang++
-CFLAGS= -O3 -g -Wall -Wpedantic
-CPPFLAGS= --std=c++17 -O3 -g -Wall -Wpedantic
+CFLAGS= -O4 -g -Wall -Wpedantic
+CPPFLAGS= --std=c++17 -O4 -g -Wall -Wpedantic
 SLURM_ARGS= --reservation=fri -c2 -G2
 
 # Arnes
-# izmeri pri različnih deležih generiranja proti računanju
 # kakšna je razlika, koliko naklj. števil naenkrat zahtevam
-# naredi par grafov iz meritev
 
 default: lib
 
 all: print pi pi_simple pi_parallel algorithms equality frequency fastest_multiplier speedup_measurement
 lib: lib/librand_gpu.so
 
-lib/librand_gpu.so: bin/test_kernel RNG.o
+lib/librand_gpu.so: RNG.o
 	@mkdir -p lib
 	$(CPPC) $(CPPFLAGS) -shared -o lib/librand_gpu.so RNG.o -lOpenCL -flto
 

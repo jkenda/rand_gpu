@@ -42,6 +42,8 @@ int main(int argc, char **argv)
 
     float time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
     printf("%lu misses\n", rng.buffer_misses());
+    printf("avg calculation time: %e ms\n", duration_cast<microseconds>(rng.avg_gpu_calculation_time()).count() / (float) 1'000);
+    printf("avg transfer time:    %e ms\n", duration_cast<microseconds>(rng.avg_gpu_transfer_time()).count() / (float) 1'000);
     printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, abs(pi_lib - M_PI), time_lib);
 
     start = system_clock::now();

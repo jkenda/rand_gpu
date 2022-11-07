@@ -107,8 +107,14 @@ size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng);
 float rand_gpu_rng_init_time(const rand_gpu_rng *rng);
 
 /**
- * @brief Returns average time waiting for GPU is ms
- * @param rng RNG whose GPU access time to retrieve
+ * @brief Returns average calculation time for GPU is ms
+ * @param rng RNG whose GPU calculation time to retrieve
+ */
+float rand_gpu_rng_avg_gpu_calculation_time(const rand_gpu_rng *rng);
+
+/**
+ * @brief Returns average transfer time for GPU is ms
+ * @param rng RNG whose GPU transfer time to retrieve
  */
 float rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng);
 
@@ -132,6 +138,11 @@ size_t rand_gpu_buffer_misses();
  * @brief Return average init time of all RNGs.
  */
 float rand_gpu_avg_init_time();
+
+/**
+ * @brief Return average GPU transfer time of all RNGs.
+ */
+float rand_gpu_avg_gpu_calculation_time();
 
 /**
  * @brief Return average GPU transfer time of all RNGs.
