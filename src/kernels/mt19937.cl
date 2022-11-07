@@ -6,6 +6,7 @@ Implements Mersenne twister generator.
 M. Matsumoto, T. Nishimura, Mersenne twister: a 623-dimensionally equidistributed uniform pseudo-random number generator, ACM Transactions on Modeling and Computer Simulation (TOMACS) 8 (1) (1998) 3–30.
 */
 
+typedef int aligned_int __attribute__((aligned(8)));
 
 #define MT19937_N 624
 #define MT19937_M 397
@@ -13,12 +14,13 @@ M. Matsumoto, T. Nishimura, Mersenne twister: a 623-dimensionally equidistribute
 #define MT19937_UPPER_MASK 0x80000000 /* most significant w-r bits */
 #define MT19937_LOWER_MASK 0x7fffffff /* least significant r bits */
 
+
 /**
 State of MT19937 RNG.
 */
 typedef struct{
 	uint mt[MT19937_N]; /* the array for the state vector  */
-	int mti;
+	aligned_int mti;
 } mt19937_state;
 
 /**

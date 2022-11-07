@@ -22,7 +22,7 @@ struct RNG_private;
 
 namespace rand_gpu
 {
-    template <rand_gpu_algorithm A = RAND_GPU_ALGORITHM_TYCHE>
+    template <rand_gpu_algorithm A = RAND_GPU_ALGORITHM_TYCHE_I>
     class RNG
     {
     public:

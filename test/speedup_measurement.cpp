@@ -13,7 +13,7 @@
 #define DBL 1
 
 #pragma GCC diagnostic ignored "-Wunused-variable"
-#define SAMPLES 10
+#define SAMPLES 5
 
 struct parameters
 {
@@ -191,7 +191,7 @@ int main(int argc, char **argv)
                 printf(",%.5f", rand_gpu_rng_init_time(rng));
                 rand_gpu_delete_all();
             }
-            cout << '\n';
+            cout << endl;
         }
         cout << endl;
     }

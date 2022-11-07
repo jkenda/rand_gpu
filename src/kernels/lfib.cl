@@ -6,6 +6,7 @@ Implements a Multiplicative Lagged Fibbonaci generator. Returns 64-bit random nu
 G. Marsaglia, L.-H. Tsay, Matrices and the structure of random number sequences, Linear algebra and its applications 67 (1985) 147–156.
 */
 
+typedef char aligned_char __attribute__((aligned(8)));
 
 #define LFIB_LAG1 17
 #define LFIB_LAG2 5
@@ -15,7 +16,7 @@ State of lfib RNG.
 */
 typedef struct{
 	ulong s[LFIB_LAG1];
-	char p1,p2;
+	aligned_char p1,p2; 
 }lfib_state;
 
 /**
@@ -46,7 +47,7 @@ Seeds lfib RNG.
 void lfib_seed(__global lfib_state* state, ulong j){
 	state->p1=LFIB_LAG1;
 	state->p2=LFIB_LAG2;
-	//if(get_global_id(0)==0) printf("seed %d\n",state->p1);
+	
 	#pragma unroll
     for (int i = 0; i < LFIB_LAG1; i++){
 		j=6906969069UL * j + 1234567UL; //LCG
