@@ -45,6 +45,42 @@ atomic<nanoseconds> &operator+=(atomic<nanoseconds> &a, nanoseconds b)
     return a;
 }
 
+static const unordered_map<rand_gpu_algorithm, const char *> NAMES = {
+    { RAND_GPU_ALGORITHM_KISS09          ,    "KISS09"        },
+    { RAND_GPU_ALGORITHM_LCG12864        ,    "LCG12864"      },
+    { RAND_GPU_ALGORITHM_LFIB            ,    "LFIB"          },
+    { RAND_GPU_ALGORITHM_MRG63K3A        ,    "MRG63K3A"      },
+    { RAND_GPU_ALGORITHM_MSWS            ,    "MSWS"          },
+    { RAND_GPU_ALGORITHM_MT19937         ,    "MT19937"       },
+    { RAND_GPU_ALGORITHM_MWC64X          ,    "MWC64X"        },
+    { RAND_GPU_ALGORITHM_PCG6432         ,    "PCG6432"       },
+    { RAND_GPU_ALGORITHM_PHILOX2X32_10   ,    "PHILOX2X32_10" },
+    { RAND_GPU_ALGORITHM_RAN2            ,    "RAN2"          },
+    { RAND_GPU_ALGORITHM_TINYMT64        ,    "TINYMT64"      },
+    { RAND_GPU_ALGORITHM_TYCHE           ,    "TYCHE"         },
+    { RAND_GPU_ALGORITHM_TYCHE_I         ,    "TYCHE_I"       },
+    { RAND_GPU_ALGORITHM_WELL512         ,    "WELL512"       },
+    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR,    "XORSHIFT6432*" },
+};
+
+static const unordered_map<rand_gpu_algorithm, const char *> DESCRIPTIONS = {
+    { RAND_GPU_ALGORITHM_KISS09          , "Kiss09 - KISS (Keep It Simple, Stupid)"                                                                                     },
+    { RAND_GPU_ALGORITHM_LCG12864        , "LCG12864 - 128-bit Linear Congruential Generator"                                                                           },
+    { RAND_GPU_ALGORITHM_LFIB            , "LFib - Multiplicative Lagged Fibbonaci generator (lowest bit is always 1)"                                                  },
+    { RAND_GPU_ALGORITHM_MRG63K3A        , "MRG63K3A (Multiple Recursive Generator)"                                                                                    },
+    { RAND_GPU_ALGORITHM_MSWS            , "MSWS - Middle Square Weyl Sequence"                                                                                         },
+    { RAND_GPU_ALGORITHM_MT19937         , "MT19937 - Mersenne twister: a 623-dimensionally equidistributed uniform pseudo-random number generator"                     },
+    { RAND_GPU_ALGORITHM_MWC64X          , "MWC64x - 64-bit Multiply With Carry generator that returns 32-bit numbers that are xor of lower and upper 32-bit numbers"   },
+    { RAND_GPU_ALGORITHM_PCG6432         , "PCG6432 - 64-bit Permutated Congruential generator (PCG-XSH-RR)"                                                            },
+    { RAND_GPU_ALGORITHM_PHILOX2X32_10   , "Philox2x32_10"                                                                                                              },
+    { RAND_GPU_ALGORITHM_RAN2            , "Ran2 - a L'Ecuyer combined recursive generator with a 32-element shuffle-box (from Numerical Recipes)"                      },
+    { RAND_GPU_ALGORITHM_TINYMT64        , "Tinymt64 - Tiny Mersenne twister"                                                                                           },
+    { RAND_GPU_ALGORITHM_TYCHE           , "Tyche - 512-bit Tyche (Well-Equidistributed Long-period Linear RNG)"                                                        },
+    { RAND_GPU_ALGORITHM_TYCHE_I         , "Tyche-i - a faster variant of Tyche with a shorter period"                                                                  },
+    { RAND_GPU_ALGORITHM_WELL512         , "WELL512 - 512-bit WELL (Well-Equidistributed Long-period Linear) RNG"                                                       },
+    { RAND_GPU_ALGORITHM_XORSHIFT6432STAR, "xorshift6432* - 64-bit xorshift* generator that returns 32-bit values"                                                      },
+};
+
 
 static const unordered_map<rand_gpu_algorithm, size_t> STATE_SIZES = {
     { RAND_GPU_ALGORITHM_KISS09          , 4 * sizeof(cl_ulong)                                          },
@@ -341,17 +377,22 @@ struct RNG_private
         }
 
         // generate 1st batch of numbers
-        for (const Buffer &buffer : _buffers)
+        for (Buffer &buffer : _buffers)
         {
-            _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size);
-            if (!_unified_memory) {
-                _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host);
+            if (_unified_memory)
+            {
+                _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size, cl::NullRange, NULL, &buffer.calculated_event);
+                buffer.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &buffer);
+            }
+            else
+            {
                 _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
+                _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host, NULL, &buffer.transferred_event);
+                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange, NULL, &buffer.calculated_event);
+                buffer.transferred_event.setCallback(CL_COMPLETE, calculated, &buffer);
+                buffer.calculated_event.setCallback(CL_COMPLETE, transferred, &buffer);
             }
         }
-
-        _queue.flush();
-        _queue.finish();
 
         _queue.flush();
         _queue.finish();
@@ -396,6 +437,30 @@ struct RNG_private
         __rngs.erase(this);
     }
 
+    inline void fill_buffer(Buffer &buffer)
+    {
+            if (_unified_memory)
+            {
+                // calculate next batch of numbers
+                _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size, cl::NullRange,
+                                            NULL, &buffer.calculated_event);
+                buffer.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &buffer);
+            }
+            else
+            {
+                // read calculated numbers
+                _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host,
+                                         NULL, &buffer.transferred_event);
+                buffer.transferred_event.setCallback(CL_COMPLETE, transferred, &buffer);
+
+                // calculate next batch
+                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange,
+                                            NULL, &buffer.calculated_event);
+                buffer.calculated_event.setCallback(CL_COMPLETE, calculated, &buffer);
+            }
+            buffer.start_time = system_clock::now();
+    }
+
 
     template <typename T>
     T get_random()
@@ -419,27 +484,7 @@ struct RNG_private
         if (_buf_offset >= _buf_limit)
         {
             active_buf.ready = false;
-
-            if (_unified_memory)
-            {
-                // calculate next batch of numbers
-                _queue.enqueueNDRangeKernel(active_buf.k_generate, 0, _global_size, cl::NullRange, 
-                                            NULL, &active_buf.calculated_event);
-                active_buf.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &active_buf);
-            }
-            else
-            {
-                // read calculated numbers
-                _queue.enqueueReadBuffer(active_buf.device, false, 0, _buffer_size, active_buf.host,
-                                         NULL, &active_buf.transferred_event);
-                active_buf.transferred_event.setCallback(CL_COMPLETE, transferred, &active_buf);
-
-                // calculate next batch
-                _queue.enqueueNDRangeKernel(active_buf.k_generate, cl::NullRange, _global_size, cl::NullRange,
-                                            NULL, &active_buf.calculated_event);
-                active_buf.calculated_event.setCallback(CL_COMPLETE, calculated, &active_buf);
-            }
-            active_buf.start_time = system_clock::now();
+            fill_buffer(active_buf);
 
             // switch active buffer
             _active_buf_id = (_active_buf_id + 1) % _n_buffers;
@@ -450,14 +495,32 @@ struct RNG_private
         return num;
     }
 
+    void discard(size_t z)
+    {
+        _buf_offset += sizeof(uint64_t) * z;
+
+        // out of numbers in current buffer
+        if (_buf_offset >= _buf_limit)
+        {
+            Buffer &active_buf = _buffers[_active_buf_id];
+            active_buf.ready = false;
+            fill_buffer(_buffers[_active_buf_id]);
+
+            // switch active buffer
+            _active_buf_id = (_active_buf_id + 1) % _n_buffers;
+            _buf_offset = 0;
+            _n_buffer_switches++;
+        }
+    }
+
     static void calculated(cl_event e, cl_int _s, void *ptr)
     {
         Buffer *buffer = (Buffer *) ptr;
         
         // get calculation time
-        uint64_t calc_start, calc_end;
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(uint32_t), &calc_start, NULL);
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(uint32_t), &calc_end,   NULL);
+        uint64_t calc_start = 0, calc_end = 0;
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &calc_start, NULL);
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(cl_ulong), &calc_end,   NULL);
         nanoseconds calc_time(calc_end - calc_start);
 	       
         buffer->rng->_gpu_calculation_time_total += calc_time;
@@ -470,7 +533,7 @@ struct RNG_private
         auto end_time = system_clock::now();
 
         Buffer *buffer = (Buffer *) ptr;
-        lock_guard<mutex> lock(buffer->ready_lock);        
+        lock_guard<mutex> lock(buffer->ready_lock);
 
         // update transfer time
         buffer->rng->_gpu_transfer_time_total += end_time - buffer->start_time;
@@ -487,12 +550,12 @@ struct RNG_private
         auto end_time = system_clock::now();
 
         Buffer *buffer = (Buffer *) ptr;
-        lock_guard<mutex> lock(buffer->ready_lock);        
+        lock_guard<mutex> lock(buffer->ready_lock);
 
         // get calculation time
-        uint64_t calc_start, calc_end;
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(uint32_t), &calc_start, NULL);
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(uint32_t), &calc_end,   NULL);
+        uint64_t calc_start = 0, calc_end = 0;
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(uint64_t), &calc_start, NULL);
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(uint64_t), &calc_end,   NULL);
 
         // notify main thread
         buffer->ready = true;
@@ -590,6 +653,8 @@ void rand_gpu_delete_all()
     }
 }
 
+void rand_gpu_rng_discard(rand_gpu_rng *rng, uint64_t z) { ((RNG_private *) rng)->discard(z); }
+
 size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng)              { return ((const RNG_private *) rng)->_buffer_size; }
 size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng)          { return ((const RNG_private *) rng)->_n_buffer_switches; }
 size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng)            { return ((const RNG_private *) rng)->_n_buffer_misses; }
@@ -662,6 +727,18 @@ namespace rand_gpu
     T RNG<A>::get_random()
     {
         return d_ptr_->get_random<T>();
+    }
+
+    template <rand_gpu_algorithm A>
+    uint64_t RNG<A>::operator()()
+    {
+       return d_ptr_->get_random<uint64_t>(); 
+    }
+
+    template <rand_gpu_algorithm A>
+    void RNG<A>::discard(size_t z)
+    {
+        d_ptr_->discard(z);
     }
 
     template <rand_gpu_algorithm A>
@@ -793,42 +870,7 @@ namespace rand_gpu
 
     const char *algorithm_name(rand_gpu_algorithm algorithm, bool description)
     {
-        const char *names[] = {
-            "KISS09",
-            "LCG12864",
-            "LFIB",
-            "MRG63K3A",
-            "MSWS",
-            "MT19937",
-            "MWC64X",
-            "PCG6432",
-            "PHILOX2X32_10",
-            "RAN2",
-            "TINYMT64",
-            "TYCHE",
-            "TYCHE_I",
-            "WELL512",
-            "XORSHIFT6432*",
-        };
-
-        const char *descriptions[] = {
-            "Kiss09 - KISS (Keep It Simple, Stupid)",
-            "LCG12864 - 128-bit Linear Congruential Generator",
-            "LFib - Multiplicative Lagged Fibbonaci generator (lowest bit is always 1)",
-            "MRG63K3A (Multiple Recursive Generator)",
-            "MSWS - Middle Square Weyl Sequence",
-            "MT19937 - Mersenne twister: a 623-dimensionally equidistributed uniform pseudo-random number generator",
-            "MWC64x - 64-bit Multiply With Carry generator that returns 32-bit numbers that are xor of lower and upper 32-bit numbers",
-            "PCG6432 - 64-bit Permutated Congruential generator (PCG-XSH-RR)",
-            "Philox2x32_10",
-            "Ran2 - a L'Ecuyer combined recursive generator with a 32-element shuffle-box (from Numerical Recipes)",
-            "Tinymt64 - Tiny Mersenne twister",
-            "Tyche - 512-bit Tyche (Well-Equidistributed Long-period Linear RNG)",
-            "Tyche-i - a faster variant of Tyche with a shorter period",
-            "WELL512 - 512-bit WELL (Well-Equidistributed Long-period Linear) RNG",
-            "xorshift6432* - 64-bit xorshift* generator that returns 32-bit values",
-        };
-        return description ? descriptions[algorithm] : names[algorithm];
+        return description ? DESCRIPTIONS.at(algorithm) : NAMES.at(algorithm);
     }
 
     /*

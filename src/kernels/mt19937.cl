@@ -21,7 +21,7 @@ State of MT19937 RNG.
 typedef struct{
 	uint mt[MT19937_N]; /* the array for the state vector  */
 	aligned_int mti;
-} mt19937_state;
+} mt19937_state __attribute__((aligned(8)));
 
 /**
 Generates a random 32-bit unsigned integer using MT19937 RNG.

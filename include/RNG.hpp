@@ -66,6 +66,16 @@ namespace rand_gpu
         T get_random();
 
         /**
+         * @brief Returns next random number.
+         */
+        uint64_t operator()();
+
+        /**
+         * @brief Advances the engine's state by a specified amount.
+         */
+        void discard(uint64_t z);
+
+        /**
          * @brief Returns size of random number buffer in bytes
          */
         std::size_t buffer_size() const;

@@ -83,6 +83,11 @@ void rand_gpu_delete(rand_gpu_rng *rng);
 void rand_gpu_delete_all();
 
 /**
+ * @brief Advances the engine's state by a specified amount.
+ */
+void rand_gpu_rng_discard(rand_gpu_rng *rng, uint64_t z);
+
+/**
  * @brief Returns buffer size of RNG (equal for all RNGs).
  * @param rng RNG whose buffer size to retrieve
  */
@@ -97,6 +102,7 @@ size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng);
 /**
  * @brief Returns number of times we had to wait for GPU to fill the buffer.
  * @param rng RNG whose buffer misses to retrieve
+ * (Minimize the number of misses by tweaking n_buffers and buffer_multi for better performance.)
  */
 size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng);
 
@@ -107,20 +113,20 @@ size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng);
 float rand_gpu_rng_init_time(const rand_gpu_rng *rng);
 
 /**
- * @brief Returns average calculation time for GPU is ms
+ * @brief Returns average calculation time for GPU in ms
  * @param rng RNG whose GPU calculation time to retrieve
  */
 float rand_gpu_rng_avg_gpu_calculation_time(const rand_gpu_rng *rng);
 
 /**
- * @brief Returns average transfer time for GPU is ms
+ * @brief Returns average transfer time for GPU in ms
  * @param rng RNG whose GPU transfer time to retrieve
  */
 float rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng);
 
 
 /**
- * @brief Returns number of bytes occupied by all RNGs.
+ * @brief Returns number of bytes occupied by all RNG instances.
  */
 size_t rand_gpu_memory_usage();
 
@@ -135,31 +141,29 @@ size_t rand_gpu_buffer_switches();
 size_t rand_gpu_buffer_misses();
 
 /**
- * @brief Return average init time of all RNGs.
+ * @brief Return average init time of all RNG instances.
  */
 float rand_gpu_avg_init_time();
 
 /**
- * @brief Return average GPU transfer time of all RNGs.
+ * @brief Return average GPU calculation time of all RNG instances.
  */
 float rand_gpu_avg_gpu_calculation_time();
 
 /**
- * @brief Return average GPU transfer time of all RNGs.
+ * @brief Return average GPU transfer time of all RNG instances.
  */
 float rand_gpu_avg_gpu_transfer_time();
 
 /**
  * @brief Returns the compilation time for the algorithm in ms.
- * 
- * @param algorithm enum of the algorithm
+ * @param enum of the algorithm
  */
 float rand_gpu_compilation_time(enum rand_gpu_algorithm algorithm);
 
 /**
  * @brief Returns the name of the algorithm corresponding to the enum.
- * 
- * @param algorithm enum of the algorithm
+ * @param enum of the algorithm
  * @param long_name false - return only name, true - return full name and description
  */
 const char *rand_gpu_algorithm_name(enum rand_gpu_algorithm algorithm, bool description);
