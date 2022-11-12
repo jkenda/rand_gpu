@@ -16,8 +16,9 @@
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
+#include <array>
 #include <unordered_set>
-#include <unordered_map>
+#include <map>
 #include <mutex>
 #include <condition_variable>
 #include <random>
@@ -25,6 +26,7 @@
 #include <cstring>
 #include <atomic>
 #include <chrono>
+#include <thread>
 
 #define CL_MINIMUM_OPENCL_VERSION 100
 #define CL_TARGET_OPENCL_VERSION 300
@@ -45,7 +47,7 @@ atomic<nanoseconds> &operator+=(atomic<nanoseconds> &a, nanoseconds b)
     return a;
 }
 
-static const unordered_map<rand_gpu_algorithm, const char *> NAMES = {
+static const map<rand_gpu_algorithm, const char *> NAMES = {
     { RAND_GPU_ALGORITHM_KISS09          ,    "KISS09"        },
     { RAND_GPU_ALGORITHM_LCG12864        ,    "LCG12864"      },
     { RAND_GPU_ALGORITHM_LFIB            ,    "LFIB"          },
@@ -63,7 +65,7 @@ static const unordered_map<rand_gpu_algorithm, const char *> NAMES = {
     { RAND_GPU_ALGORITHM_XORSHIFT6432STAR,    "XORSHIFT6432*" },
 };
 
-static const unordered_map<rand_gpu_algorithm, const char *> DESCRIPTIONS = {
+static const map<rand_gpu_algorithm, const char *> DESCRIPTIONS = {
     { RAND_GPU_ALGORITHM_KISS09          , "Kiss09 - KISS (Keep It Simple, Stupid)"                                                                                     },
     { RAND_GPU_ALGORITHM_LCG12864        , "LCG12864 - 128-bit Linear Congruential Generator"                                                                           },
     { RAND_GPU_ALGORITHM_LFIB            , "LFib - Multiplicative Lagged Fibbonaci generator (lowest bit is always 1)"                                                  },
@@ -82,7 +84,7 @@ static const unordered_map<rand_gpu_algorithm, const char *> DESCRIPTIONS = {
 };
 
 
-static const unordered_map<rand_gpu_algorithm, size_t> STATE_SIZES = {
+static const map<rand_gpu_algorithm, size_t> STATE_SIZES = {
     { RAND_GPU_ALGORITHM_KISS09          , 4 * sizeof(cl_ulong)                                          },
     { RAND_GPU_ALGORITHM_LCG12864        , 2 * sizeof(cl_ulong)                                          },
     { RAND_GPU_ALGORITHM_LFIB            , 17 * sizeof(cl_ulong) + 2 * 8                                 },
@@ -100,7 +102,7 @@ static const unordered_map<rand_gpu_algorithm, size_t> STATE_SIZES = {
     { RAND_GPU_ALGORITHM_XORSHIFT6432STAR, sizeof(cl_ulong)                                              },
 };
 
-static const unordered_map<rand_gpu_algorithm, const char *> INIT_KERNEL_NAMES = {
+static const map<rand_gpu_algorithm, const char *> INIT_KERNEL_NAMES = {
     { RAND_GPU_ALGORITHM_KISS09          , "kiss09_init"            },
     { RAND_GPU_ALGORITHM_LCG12864        , "lcg12864_init"          },
     { RAND_GPU_ALGORITHM_LFIB            , "lfib_init"              },
@@ -118,7 +120,7 @@ static const unordered_map<rand_gpu_algorithm, const char *> INIT_KERNEL_NAMES =
     { RAND_GPU_ALGORITHM_XORSHIFT6432STAR, "xorshift6432star_init"  },
 };
 
-static const unordered_map<rand_gpu_algorithm, const char *> GENERATE_KERNEL_NAMES = {
+static const map<rand_gpu_algorithm, const char *> GENERATE_KERNEL_NAMES = {
     { RAND_GPU_ALGORITHM_KISS09          , "kiss09_generate"            },
     { RAND_GPU_ALGORITHM_LCG12864        , "lcg12864_generate"          },
     { RAND_GPU_ALGORITHM_LFIB            , "lfib_generate"              },
@@ -146,15 +148,13 @@ static const size_t N_ALGORITHMS = RAND_GPU_ALGORITHM_XORSHIFT6432STAR - RAND_GP
 static mutex __constructor_lock;
 static bool __initialized = false;
 
-static vector<cl::Device> __devices;
-static size_t __device_i = 0;
 static atomic<size_t> __memory_usage(0);
 
 static mt19937_64 __generator;
-static cl::Context __context;
-static cl::Program __programs[N_ALGORITHMS];
-static bool __program_built[N_ALGORITHMS];
-static nanoseconds __compilation_times[N_ALGORITHMS];
+static vector<cl::Device> __devices;
+static array<map<cl::Device *, cl::Program>, N_ALGORITHMS> __programs;
+static array<nanoseconds, N_ALGORITHMS> __compilation_times;
+static size_t __device_id = 0;
 
 static atomic<nanoseconds> __sum_init_time_deleted(nanoseconds::zero());
 static atomic<nanoseconds> __sum_avg_transfer_time_deleted(nanoseconds::zero());
@@ -178,7 +178,7 @@ struct RNG_private
 
         cl::Kernel k_generate;
 
-        bool ready = true;
+        atomic<bool> ready = true;
         mutex ready_lock;
         cl::Event transferred_event, calculated_event;
         condition_variable ready_cond;
@@ -217,13 +217,12 @@ struct RNG_private
         _n_buffers(max(n_buffers, 2LU)),
         _buffers(max(n_buffers, 2LU))
     {
-        uint64_t seed;
-        cl::Device device;
-        cl::Program &program = __programs[algorithm];
+        uint64_t seed = 0;
         auto start = chrono::system_clock::now();
+        size_t device_id = 0;
 
         {
-            lock_guard<mutex> lock(__constructor_lock);
+            lock_guard lock(__constructor_lock);
 
             if (!__initialized)
             {
@@ -241,9 +240,6 @@ struct RNG_private
                     throw err;
                 }
 
-                // create context
-                __context = cl::Context(__devices);
-
                 // initialize host RNG for generating seeds
                 __generator = mt19937_64(system_clock::now().time_since_epoch().count());
 
@@ -255,50 +251,49 @@ struct RNG_private
                 seed = custom_seed;
             else
                 seed = __generator();
-            
+
             // distribute devices among instances
-            device = __devices[__device_i];
-            __device_i = (__device_i + 1) % __devices.size();
+            device_id = __device_id;
+            __device_id = (__device_id + 1) % __devices.size();
+        }
 
-            if (!__program_built[algorithm])
+        // create context and program
+        cl::Device &device   = __devices[device_id];
+        bool program_built   = __programs[algorithm].count(&device) > 0;
+        cl::Program &program = __programs[algorithm][&device];
+        cl::Context context  = cl::Context(device);
+
+        if (!program_built)
+        {
+            program = cl::Program(context, KERNEL_SOURCE[algorithm]);
+
+            try
             {
-                // build program
-                program = cl::Program(__context, KERNEL_SOURCE[algorithm]);
-
-                try
-                {
-                    auto build_start = system_clock::now();
-                    program.build(__devices);
-                    __compilation_times[algorithm] = system_clock::now() - build_start;
-                }
-                catch (const cl::Error &err)
-                {
-                    // print buildlog if build failed
-                    for (const cl::Device &device : __devices) 
-                    {
-                        if (program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(device) != CL_SUCCESS)
-                        {
-                            string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-                            cerr << buildlog << '\n';
-                            throw err;
-                        }
-                    }
-                }
-                __program_built[algorithm] = true;
+                auto build_start = system_clock::now();
+                program.build(device);
+                __compilation_times[algorithm] = system_clock::now() - build_start;
             }
-
+            catch (const cl::Error &err)
+            {
+                // print buildlog if build failed
+                if (program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(device) != CL_SUCCESS)
+                {
+                    string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
+                    cerr << buildlog << '\n';
+                    throw err;
+                }
+            }
         }
 
         // create command queue
-        _queue = cl::CommandQueue(__context, device, CL_QUEUE_PROFILING_ENABLE);
+        _queue = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE);
 
         // get device info
         cl::Kernel temp(program, INIT_KERNEL_NAMES.at(algorithm));
-        size_t max_cu = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
-        size_t optimal_wg_size = temp.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
+        _unified_memory        = device.getInfo<CL_DEVICE_HOST_UNIFIED_MEMORY>();
+        size_t max_cu          = device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
         size_t maximal_wg_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
-        size_t max_mem  = device.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>();
-        _unified_memory = device.getInfo<CL_DEVICE_HOST_UNIFIED_MEMORY>();
+        size_t optimal_wg_size = temp.getWorkGroupInfo<CL_KERNEL_WORK_GROUP_SIZE>(device);
 
         // calculate optimal buffer size
         size_t local_size  = min(optimal_wg_size, maximal_wg_size);
@@ -307,18 +302,9 @@ struct RNG_private
         _global_size = cl::NDRange(_buffer_size / sizeof(uint64_t));
         _buf_limit = _buffer_size - sizeof(uint64_t);
 
-        // resize host buffers, create device buffers
+        // create state buffer
         size_t state_buf_size = _global_size[0] * STATE_SIZES.at(algorithm);
-        size_t seeds_buf_size = sizeof(uint64_t);
-        if (algorithm != RAND_GPU_ALGORITHM_TYCHE && algorithm != RAND_GPU_ALGORITHM_TYCHE_I)
-            seeds_buf_size = _global_size[0] * (algorithm == RAND_GPU_ALGORITHM_MT19937 ? sizeof(cl_uint) : sizeof(cl_ulong));
-
-        if (state_buf_size + seeds_buf_size + _buffer_size > max_mem)
-        {
-            throw runtime_error("Out of memory - pick smaller num_buffers or multi");
-        }
-
-        _state_buf = cl::Buffer(__context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, state_buf_size);
+        _state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, state_buf_size);
 
         // initialize RNG
         cl::Kernel k_init(program, INIT_KERNEL_NAMES.at(algorithm));
@@ -342,7 +328,7 @@ struct RNG_private
                 vector<uint32_t> seeds(_global_size[0]);
                 for (size_t i = 0; i < _global_size[0]; i++)
                     seeds[i] = seed_generator();
-                cl_seeds = cl::Buffer(__context, seeds.begin(), seeds.end(), true, true);
+                cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, _unified_memory);
                 k_init.setArg(1, cl_seeds);
                 _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
             }
@@ -354,7 +340,7 @@ struct RNG_private
                 vector<uint64_t> seeds(_global_size[0]);
                 for (size_t i = 0; i < _global_size[0]; i++)
                     seeds[i] = seed_generator();
-                cl_seeds = cl::Buffer(__context, seeds.begin(), seeds.end(), true, true);
+                cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, true);
                 k_init.setArg(1, cl_seeds);
                 _queue.enqueueNDRangeKernel(k_init, 0, _global_size);
             }
@@ -363,7 +349,7 @@ struct RNG_private
         // create and bind buffers
         for (Buffer &buffer : _buffers)
         {
-            buffer.device = cl::Buffer(__context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, _buffer_size);
+            buffer.device = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, _buffer_size);
             buffer.host = (uint8_t *) _queue.enqueueMapBuffer(buffer.device, true, CL_MAP_READ, 0, _buffer_size);
             buffer.rng = this;
         }
@@ -387,10 +373,8 @@ struct RNG_private
             else
             {
                 _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
-                _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host, NULL, &buffer.transferred_event);
-                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange, NULL, &buffer.calculated_event);
-                buffer.transferred_event.setCallback(CL_COMPLETE, calculated, &buffer);
-                buffer.calculated_event.setCallback(CL_COMPLETE, transferred, &buffer);
+                _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host);
+                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
             }
         }
 
@@ -409,13 +393,8 @@ struct RNG_private
         for (Buffer &buffer : _buffers)
         {
             // ensure set_flag won't try to access a deleted Buffer
-            unique_lock<mutex> lock(buffer.ready_lock);
-            buffer.ready_cond.wait(lock, [&] { return buffer.ready; });
-
-	    if (!_unified_memory)
-	    {
-                while (buffer.rng->_n_gpu_calculations < buffer.rng->_n_gpu_transfers);
-            }
+            while (!buffer.ready || buffer.rng->_n_gpu_calculations < buffer.rng->_n_gpu_transfers)
+                this_thread::sleep_for(nanoseconds(0));
 
             // unmap host_ptr
             _queue.enqueueUnmapMemObject(buffer.device, buffer.host);
@@ -437,42 +416,43 @@ struct RNG_private
         __rngs.erase(this);
     }
 
-    inline void fill_buffer(Buffer &buffer)
+    inline __attribute__((always_inline)) void fill_buffer(Buffer &buffer)
     {
-            if (_unified_memory)
-            {
-                // calculate next batch of numbers
-                _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size, cl::NullRange,
-                                            NULL, &buffer.calculated_event);
-                buffer.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &buffer);
-            }
-            else
-            {
-                // read calculated numbers
-                _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host,
-                                         NULL, &buffer.transferred_event);
-                buffer.transferred_event.setCallback(CL_COMPLETE, transferred, &buffer);
+        if (_unified_memory)
+        {
+            // calculate next batch of numbers
+            _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size, cl::NullRange,
+                                        NULL, &buffer.calculated_event);
+            buffer.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &buffer);
+        }
+        else
+        {
+            // read calculated numbers
+            _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host,
+                                     NULL, &buffer.transferred_event);
+            buffer.transferred_event.setCallback(CL_COMPLETE, transferred, &buffer);
 
-                // calculate next batch
-                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange,
-                                            NULL, &buffer.calculated_event);
-                buffer.calculated_event.setCallback(CL_COMPLETE, calculated, &buffer);
-            }
-            buffer.start_time = system_clock::now();
+            // calculate next batch
+            _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange,
+                                        NULL, &buffer.calculated_event);
+            buffer.calculated_event.setCallback(CL_COMPLETE, calculated, &buffer);
+        }
+        buffer.start_time = system_clock::now();
     }
 
 
     template <typename T>
-    T get_random()
+    inline __attribute__((always_inline)) T get_random()
     {
         Buffer &active_buf = _buffers[_active_buf_id];
 
         // just switched buffers - wait for buffer to be ready
         if (_buf_offset == 0)
         {
-            unique_lock<mutex> lock(active_buf.ready_lock);
+            //unique_lock<mutex> lock(active_buf.ready_lock);
             if (!active_buf.ready) _n_buffer_misses++;
-            active_buf.ready_cond.wait(lock, [&] { return active_buf.ready; });
+            while (!active_buf.ready); 
+            //active_buf.ready_cond.wait(lock, [&] { return active_buf.ready; });
         }
 
         // retrieve number from buffer
@@ -497,7 +477,7 @@ struct RNG_private
 
     void discard(size_t z)
     {
-        _buf_offset += sizeof(uint64_t) * z;
+        _buf_offset += z;
 
         // out of numbers in current buffer
         if (_buf_offset >= _buf_limit)
@@ -533,7 +513,7 @@ struct RNG_private
         auto end_time = system_clock::now();
 
         Buffer *buffer = (Buffer *) ptr;
-        lock_guard<mutex> lock(buffer->ready_lock);
+        //lock_guard<mutex> lock(buffer->ready_lock);
 
         // update transfer time
         buffer->rng->_gpu_transfer_time_total += end_time - buffer->start_time;
@@ -541,7 +521,7 @@ struct RNG_private
 
         // notify main thread
         buffer->ready = true;
-        buffer->ready_cond.notify_one();
+        //buffer->ready_cond.notify_one();
     }
 
     static void calculated_unified(cl_event e, cl_int _s, void *ptr)
@@ -550,7 +530,7 @@ struct RNG_private
         auto end_time = system_clock::now();
 
         Buffer *buffer = (Buffer *) ptr;
-        lock_guard<mutex> lock(buffer->ready_lock);
+        //lock_guard<mutex> lock(buffer->ready_lock);
 
         // get calculation time
         uint64_t calc_start = 0, calc_end = 0;
@@ -559,7 +539,7 @@ struct RNG_private
 
         // notify main thread
         buffer->ready = true;
-        buffer->ready_cond.notify_one();
+        //buffer->ready_cond.notify_one();
 
         nanoseconds calc_time(calc_end - calc_start);
 
@@ -594,27 +574,27 @@ template specialization
 */
 
 template <>
-float RNG_private::get_random<float>()
+inline __attribute__((always_inline)) float RNG_private::get_random<float>()
 {
     return FLOAT_MULTIPLIER * get_random<unsigned int>();
 }
 
 template <>
-double RNG_private::get_random<double>()
+inline __attribute__((always_inline)) double RNG_private::get_random<double>()
 {
     return DOUBLE_MULTIPLIER * get_random<unsigned long>();
 }
 
 template <>
-long double RNG_private::get_random<long double>()
+inline __attribute__((always_inline)) long double RNG_private::get_random<long double>()
 {
     return LONG_DOUBLE_MULTIPLIER * get_random<unsigned long long>();
 }
 
 template <>
-bool RNG_private::get_random<bool>()
+inline __attribute__((always_inline)) bool RNG_private::get_random<bool>()
 {
-    return get_random<uint32_t>() > (UINT32_MAX / 2U) ? true : false;
+    return get_random<uint8_t>() % 2;
 }
 
 
@@ -624,22 +604,22 @@ C wrapper functions
 
 extern "C" {
 
-rand_gpu_rng *rand_gpu_new_default()
+rand_gpu_rng *rand_gpu_new_rng_default()
 {
     return new RNG_private;
 }
 
-rand_gpu_rng *rand_gpu_new(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi)
+rand_gpu_rng *rand_gpu_new_rng(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi)
 {
     return new RNG_private(n_buffers, buffer_multi, algorithm);
 }
 
-rand_gpu_rng *rand_gpu_new_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi)
+rand_gpu_rng *rand_gpu_new_rng_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi)
 {
     return new RNG_private(n_buffers, buffer_multi, algorithm, true, seed);
 }
 
-void rand_gpu_delete(rand_gpu_rng *rng)
+void rand_gpu_delete_rng(rand_gpu_rng *rng)
 {
     delete (RNG_private *) rng;
 }
@@ -654,6 +634,16 @@ void rand_gpu_delete_all()
 }
 
 void rand_gpu_rng_discard(rand_gpu_rng *rng, uint64_t z) { ((RNG_private *) rng)->discard(z); }
+
+uint64_t rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint64_t>(); }
+uint32_t rand_gpu_u32(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint32_t>(); }
+uint16_t rand_gpu_u16(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint16_t>(); }
+uint8_t  rand_gpu_u8(rand_gpu_rng *rng)  { return ((RNG_private *) rng)->get_random<uint8_t>();  }
+
+uint8_t     rand_gpu_bool(rand_gpu_rng *rng)        { return ((RNG_private *) rng)->get_random<bool>();  }
+float       rand_gpu_float(rand_gpu_rng *rng)       { return ((RNG_private *) rng)->get_random<float>();       }
+double      rand_gpu_double(rand_gpu_rng *rng)      { return ((RNG_private *) rng)->get_random<double>();      }
+long double rand_gpu_long_double(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<long double>(); }
 
 size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng)              { return ((const RNG_private *) rng)->_buffer_size; }
 size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng)          { return ((const RNG_private *) rng)->_n_buffer_switches; }
@@ -671,15 +661,6 @@ float  rand_gpu_avg_gpu_transfer_time()    { return rand_gpu::avg_gpu_transfer_t
 
 float rand_gpu_compilation_time(rand_gpu_algorithm algorithm) { return __compilation_times[algorithm].count() / MILLION; }
 const char *rand_gpu_algorithm_name(rand_gpu_algorithm algorithm, bool description) { return rand_gpu::algorithm_name(algorithm, description); }
-
-uint64_t rand_gpu_u64(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint64_t>(); }
-uint32_t rand_gpu_u32(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint32_t>(); }
-uint16_t rand_gpu_u16(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<uint16_t>(); }
-uint8_t  rand_gpu_u8(rand_gpu_rng *rng)  { return ((RNG_private *) rng)->get_random<uint8_t>();  }
-
-float       rand_gpu_float(rand_gpu_rng *rng)       { return ((RNG_private *) rng)->get_random<float>();       }
-double      rand_gpu_double(rand_gpu_rng *rng)      { return ((RNG_private *) rng)->get_random<double>();      }
-long double rand_gpu_long_double(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<long double>(); }
 
 }
 

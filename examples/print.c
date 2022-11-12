@@ -5,7 +5,7 @@
 
 int main()
 {
-    rand_gpu_rng *rng = rand_gpu_new_default();
+    rand_gpu_rng *rng = rand_gpu_new_rng_default();
 
     printf("u8: %lu bits\n", 8 * sizeof(uint8_t));
     for (int i = 0; i < 500; i++) {

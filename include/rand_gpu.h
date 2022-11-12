@@ -49,7 +49,7 @@ enum rand_gpu_algorithm
 /**
  * @brief Initializes a new random number generator with default parameters.
  */
-rand_gpu_rng *rand_gpu_new_default();
+rand_gpu_rng *rand_gpu_new_rng_default();
 
 /**
  * @brief Initializes a new random number generator.
@@ -58,7 +58,7 @@ rand_gpu_rng *rand_gpu_new_default();
  * @param n_buffers Number of buffers for storing random numbers
  * @param buffer_multi Buffer size multiplier
  */
-rand_gpu_rng *rand_gpu_new(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
+rand_gpu_rng *rand_gpu_new_rng(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
 
 /**
  * @brief Initializes a new random number generator.
@@ -68,24 +68,73 @@ rand_gpu_rng *rand_gpu_new(enum rand_gpu_algorithm algorithm, size_t n_buffers, 
  * @param n_buffers Number of buffers for storing random numbers
  * @param buffer_multi Buffer size multiplier
  */
-rand_gpu_rng *rand_gpu_new_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
+rand_gpu_rng *rand_gpu_new_rng_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
 
 /**
  * @brief Deletes the RNG.
  * @param rng RNG to be deleted
  */
-void rand_gpu_delete(rand_gpu_rng *rng);
-
+void rand_gpu_delete_rng(rand_gpu_rng *rng);
 
 /**
  * @brief Delete all RNGs.
  */
 void rand_gpu_delete_all();
 
+
 /**
- * @brief Advances the engine's state by a specified amount.
+ * @brief Returns next 64-bit random number.
+ * @param rng RNG to retrieve the random number from
+ */
+uint64_t rand_gpu_u64(rand_gpu_rng *rng);
+
+/**
+ * @brief Returns next 32-bit random number.
+ * @param rng RNG to retrieve the random number from
+ */
+uint32_t rand_gpu_u32(rand_gpu_rng *rng);
+
+/**
+ * @brief Returns next 16-bit random number.
+ * @param rng RNG to retrieve the random number from
+ */
+uint16_t rand_gpu_u16(rand_gpu_rng *rng);
+
+/**
+ * @brief Returns next 8-bit random number.
+ * @param rng RNG to retrieve the random number from
+ */
+uint8_t rand_gpu_u8(rand_gpu_rng *rng);
+
+/**
+ * @brief Returns next bool.
+ * @param rng RNG to retrieve the random number from
+ */
+uint8_t rand_gpu_bool(rand_gpu_rng *rng);
+
+/**
+ * @brief Returns next random float.
+ * @param rng RNG to retrieve the random number from
+ */
+float rand_gpu_float(rand_gpu_rng *rng);
+
+/**
+ * @brief Returns next random double.
+ * @param rng RNG to retrieve the random number from
+ */
+double rand_gpu_double(rand_gpu_rng *rng);
+
+/**
+ * @brief Returns next random long double.
+ * @param rng RNG to retrieve the random number from
+ */
+long double rand_gpu_long_double(rand_gpu_rng *rng);
+
+/**
+ * @brief Discards u bytes from RNG's buffer.
  */
 void rand_gpu_rng_discard(rand_gpu_rng *rng, uint64_t z);
+
 
 /**
  * @brief Returns buffer size of RNG (equal for all RNGs).
@@ -168,49 +217,6 @@ float rand_gpu_compilation_time(enum rand_gpu_algorithm algorithm);
  */
 const char *rand_gpu_algorithm_name(enum rand_gpu_algorithm algorithm, bool description);
 
-
-/**
- * @brief Returns next random number.
- * @param rng RNG to retrieve the random number from
- */
-uint64_t rand_gpu_u64(rand_gpu_rng *rng);
-
-/**
- * @brief Returns next random number.
- * @param rng RNG to retrieve the random number from
- */
-uint32_t rand_gpu_u32(rand_gpu_rng *rng);
-
-/**
- * @brief Returns next random number.
- * @param rng RNG to retrieve the random number from
- */
-uint16_t rand_gpu_u16(rand_gpu_rng *rng);
-
-/**
- * @brief Returns next random number.
- * @param rng RNG to retrieve the random number from
- */
-uint8_t rand_gpu_u8(rand_gpu_rng *rng);
-
-
-/**
- * @brief Returns next random number.
- * @param rng RNG to retrieve the random number from
- */
-float rand_gpu_float(rand_gpu_rng *rng);
-
-/**
- * @brief Returns next random number.
- * @param rng RNG to retrieve the random number from
- */
-double rand_gpu_double(rand_gpu_rng *rng);
-
-/**
- * @brief Returns next random number.
- * @param rng RNG to retrieve the random number from
- */
-long double rand_gpu_long_double(rand_gpu_rng *rng);
 
 
 #ifdef __cplusplus

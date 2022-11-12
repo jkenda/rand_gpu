@@ -30,7 +30,7 @@ float get_time(enum rand_gpu_algorithm algorithm, int n_buffers, int multi)
 {
     struct timespec start, end;
 
-    rand_gpu_rng *rng = rand_gpu_new(algorithm, n_buffers, multi);
+    rand_gpu_rng *rng = rand_gpu_new_rng(algorithm, n_buffers, multi);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
@@ -41,7 +41,7 @@ float get_time(enum rand_gpu_algorithm algorithm, int n_buffers, int multi)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
-    rand_gpu_delete(rng);
+    rand_gpu_delete_rng(rng);
 
     float time = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
 

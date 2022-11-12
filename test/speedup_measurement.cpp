@@ -166,7 +166,7 @@ int main(int argc, char **argv)
 
     for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
     {
-        rand_gpu_rng *rng = rand_gpu_new((rand_gpu_algorithm) algorithm, 2, 1);
+        rand_gpu_rng *rng = rand_gpu_new_rng((rand_gpu_algorithm) algorithm, 2, 1);
         rand_gpu_delete_all();
         printf("%s,%f\n", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), 
             rand_gpu_compilation_time((rand_gpu_algorithm) algorithm));
@@ -186,7 +186,7 @@ int main(int argc, char **argv)
             printf("%s,%02d", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), multi);
             for (int n_buffers : n_bufs)
             {
-                rand_gpu_rng *rng = rand_gpu_new((rand_gpu_algorithm) algorithm, n_buffers, multi);
+                rand_gpu_rng *rng = rand_gpu_new_rng((rand_gpu_algorithm) algorithm, n_buffers, multi);
                 printf(",%.5f", rand_gpu_rng_init_time(rng));
                 rand_gpu_delete_all();
             }
@@ -233,7 +233,7 @@ int main(int argc, char **argv)
                 printf("%s,%02d,%02d", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), n_buffers, multi);
                 fflush(stdout);
 
-                rand_gpu_rng *rng = rand_gpu_new((rand_gpu_algorithm) algorithm, n_buffers, multi);
+                rand_gpu_rng *rng = rand_gpu_new_rng((rand_gpu_algorithm) algorithm, n_buffers, multi);
                 
                 for (int i = 0; i <= 10; i++)
                 {
@@ -252,7 +252,7 @@ int main(int argc, char **argv)
                     flush(cout);
                 }
                 cout << '\n';
-                rand_gpu_delete(rng);
+                rand_gpu_delete_rng(rng);
             }
         }
         cout << '\n';

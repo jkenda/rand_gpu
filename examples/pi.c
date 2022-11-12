@@ -21,18 +21,19 @@ int main(int argc, char **argv)
     if (argc == 3)
         sscanf(argv[2], "%lu", &multi);
 
-    printf("num. buffers: %lu, multi: %lu\n", n_buffers, multi);
     printf("real pi: %lf\n", M_PI);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    rand_gpu_rng *rng = rand_gpu_new(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
-
+    rand_gpu_rng *rng0 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TYCHE_I, n_buffers, multi);
+    rand_gpu_rng *rng1 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TYCHE_I, n_buffers, multi);
+    rand_gpu_rng_discard(rng0, rand_gpu_rng_buffer_size(rng0) / (n_buffers * 2));
+    
     long cnt = 0;
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-        float a = rand_gpu_float(rng);
-        float b = rand_gpu_float(rng);
+        float a = rand_gpu_float(rng0);
+        float b = rand_gpu_float(rng1);
         if (a*a + b*b < 1.0f) {
             cnt++;
         }
@@ -41,9 +42,9 @@ int main(int argc, char **argv)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     float time_lib = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
-    printf("%lu misses\n", rand_gpu_rng_buffer_misses(rng));
-    printf("avg calculation time: %e ms\n", rand_gpu_rng_avg_gpu_calculation_time(rng) / (float) 1000);
-    printf("avg transfer time:    %e ms\n", rand_gpu_rng_avg_gpu_transfer_time(rng) / (float) 1000);
+    printf("%lu misses\n", rand_gpu_rng_buffer_misses(rng0) + rand_gpu_rng_buffer_misses(rng1));
+    printf("avg calculation time: %e ms\n", (rand_gpu_rng_avg_gpu_calculation_time(rng0) + rand_gpu_rng_avg_gpu_calculation_time(rng1)) / (float) 1000);
+    printf("avg transfer time:    %e ms\n", (rand_gpu_rng_avg_gpu_transfer_time(rng0) + rand_gpu_rng_avg_gpu_transfer_time(rng1)) / (float) 1000);
     printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, ABS(pi_lib - M_PI), time_lib);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -66,5 +67,5 @@ int main(int argc, char **argv)
     printf("std pi ≃ %lf (+-%f), %f s\n", pi_std, ABS(pi_std - M_PI), time_std);
     printf("speedup = %f\n", time_std / time_lib);
 
-    rand_gpu_delete(rng);
+    rand_gpu_delete_all();
 }
