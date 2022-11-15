@@ -1,7 +1,7 @@
 CC= gcc # clang
 CPPC= g++ # clang++
-CFLAGS= -O4 -ggdb -Wall -Wpedantic
-CPPFLAGS= --std=c++17 -O4 -ggdb -Wall -Wpedantic
+CFLAGS= -Ofast -ggdb -Wall -Wpedantic
+CPPFLAGS= --std=c++17 -Ofast -ggdb -Wall -Wpedantic
 SLURM_ARGS= --reservation=fri -c2 -G2
 
 # Arnes
@@ -31,9 +31,9 @@ run_slurm: pi_parallel
 bin/test_kernel: tools/test_kernel.cpp kernel.hpp
 	@mkdir -p bin/c++
 	$(CPPC) $(CPPFLAGS) -o bin/test_kernel tools/test_kernel.cpp -lOpenCL
-	@LD_LIBRARY_PATH=lib bin/test_kernel
+	-LD_LIBRARY_PATH=lib bin/test_kernel
 
-RNG.o: include/RNG.hpp src/RNG.cpp kernel.hpp
+RNG.o: include/RNG.hpp src/RNG.cpp kernel.hpp bin/test_kernel
 	$(CPPC) $(CPPFLAGS) -c src/RNG.cpp -fPIC
 
 kernel.hpp: tools/convert_kernel.py src/kernels/*.cl

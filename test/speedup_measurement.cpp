@@ -39,7 +39,7 @@ using chrono::steady_clock;
 static const int N_ALGORITHMS = RAND_GPU_ALGORITHM_XORSHIFT6432STAR - RAND_GPU_ALGORITHM_KISS09 + 1;
 static const duration<uint64_t> DURATION(1s);
 static const array<int, 12> multipliers { 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 };
-static const array<int, 7> n_bufs { 2, 3, 4, 6, 8, 12, 16 };
+static const array<int, 6> n_bufs { 2, 3, 4, 6, 8, 12 };
 
 
 mt19937 generator32(steady_clock::now().time_since_epoch().count());

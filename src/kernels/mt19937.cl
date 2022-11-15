@@ -19,7 +19,7 @@ typedef int aligned_int __attribute__((aligned(8)));
 State of MT19937 RNG.
 */
 typedef struct{
-	uint mt[MT19937_N]; /* the array for the state vector  */
+	uint mt[MT19937_N] __attribute__((aligned(8))); /* the array for the state vector  */
 	aligned_int mti;
 } mt19937_state __attribute__((aligned(8)));
 
@@ -86,7 +86,7 @@ Generates a random 64-bit unsigned integer using MT19937 RNG.
 */
 #define mt19937_ulong(state) ((((ulong)mt19937_uint(state)) << 32) | mt19937_uint(state))
 
-__kernel void mt19937_init(__global mt19937_state *states, __global ulong *seeds)
+__kernel void mt19937_init(__global mt19937_state *states, __global uint *seeds)
 {
     const uint gid = get_global_id(0);
     mt19937_seed(&states[gid], seeds[gid]);

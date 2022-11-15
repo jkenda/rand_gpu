@@ -173,10 +173,10 @@ struct RNG_private
 {
     struct Buffer
     {
+        cl::Kernel k_generate;
         cl::Buffer device;
         uint8_t *host = nullptr;
 
-        cl::Kernel k_generate;
 
         atomic<bool> ready = true;
         mutex ready_lock;
@@ -198,8 +198,10 @@ struct RNG_private
     const size_t _n_buffers;
     vector<Buffer> _buffers;
     uint_fast8_t _active_buf_id = 0;
-
     uint_fast64_t _buf_offset = 0;
+
+    uint64_t _bool_reg;
+    uint_fast8_t  _bool_reg_offset = 0;
 
     nanoseconds _init_time = nanoseconds::zero();
     nanoseconds _gpu_calculation_time_total = nanoseconds::zero();
@@ -222,7 +224,7 @@ struct RNG_private
         size_t device_id = 0;
 
         {
-            lock_guard lock(__constructor_lock);
+            lock_guard<mutex> lock(__constructor_lock);
 
             if (!__initialized)
             {
@@ -241,7 +243,8 @@ struct RNG_private
                 }
 
                 // initialize host RNG for generating seeds
-                __generator = mt19937_64(system_clock::now().time_since_epoch().count());
+                random_device dev;
+                __generator = mt19937_64(((uint64_t) dev() << 32) | dev());
 
                 __initialized = true;
             }
@@ -367,8 +370,7 @@ struct RNG_private
         {
             if (_unified_memory)
             {
-                _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size, cl::NullRange, NULL, &buffer.calculated_event);
-                buffer.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &buffer);
+                _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size, cl::NullRange);
             }
             else
             {
@@ -381,6 +383,10 @@ struct RNG_private
         _queue.flush();
         _queue.finish();
 
+        // initialize the bool register
+        _bool_reg = get_random<uint64_t>();
+
+        // update stats
         _init_time = chrono::system_clock::now() - start;
         __memory_usage += _n_buffers * _buffer_size;
 
@@ -392,7 +398,7 @@ struct RNG_private
     {
         for (Buffer &buffer : _buffers)
         {
-            // ensure set_flag won't try to access a deleted Buffer
+            // wait for the OpenCL thread to finish work
             while (!buffer.ready || buffer.rng->_n_gpu_calculations < buffer.rng->_n_gpu_transfers)
                 this_thread::sleep_for(nanoseconds(0));
 
@@ -403,7 +409,7 @@ struct RNG_private
         _queue.flush();
         _queue.finish();
 
-        // set global variables
+        // update stats
         __memory_usage -= _n_buffers * _buffer_size;
         __sum_avg_transfer_time_deleted    += avg_gpu_transfer_time();
         __sum_avg_calculation_time_deleted += avg_gpu_calculation_time();
@@ -449,10 +455,11 @@ struct RNG_private
         // just switched buffers - wait for buffer to be ready
         if (_buf_offset == 0)
         {
-            //unique_lock<mutex> lock(active_buf.ready_lock);
-            if (!active_buf.ready) _n_buffer_misses++;
-            while (!active_buf.ready); 
-            //active_buf.ready_cond.wait(lock, [&] { return active_buf.ready; });
+            if (!active_buf.ready)
+            {
+                _n_buffer_misses++;
+                while (!active_buf.ready);
+            }
         }
 
         // retrieve number from buffer
@@ -473,6 +480,37 @@ struct RNG_private
         }
 
         return num;
+    }
+
+    inline __attribute__((always_inline)) void copy_random(void *dst, const size_t nbytes)
+    {
+        Buffer &active_buf = _buffers[_active_buf_id];
+
+        // just switched buffers - wait for buffer to be ready
+        if (_buf_offset == 0)
+        {
+            if (!active_buf.ready) 
+            {
+                _n_buffer_misses++;
+                while (!active_buf.ready); 
+            }
+        }
+
+        // retrieve number from buffer
+        memcpy(dst, &active_buf.host[_buf_offset], nbytes);
+        _buf_offset += nbytes;
+
+        // out of numbers in current buffer
+        if (_buf_offset >= _buf_limit)
+        {
+            active_buf.ready = false;
+            fill_buffer(active_buf);
+
+            // switch active buffer
+            _active_buf_id = (_active_buf_id + 1) % _n_buffers;
+            _buf_offset = 0;
+            _n_buffer_switches++;
+        }
     }
 
     void discard(size_t z)
@@ -513,7 +551,6 @@ struct RNG_private
         auto end_time = system_clock::now();
 
         Buffer *buffer = (Buffer *) ptr;
-        //lock_guard<mutex> lock(buffer->ready_lock);
 
         // update transfer time
         buffer->rng->_gpu_transfer_time_total += end_time - buffer->start_time;
@@ -521,7 +558,6 @@ struct RNG_private
 
         // notify main thread
         buffer->ready = true;
-        //buffer->ready_cond.notify_one();
     }
 
     static void calculated_unified(cl_event e, cl_int _s, void *ptr)
@@ -530,7 +566,6 @@ struct RNG_private
         auto end_time = system_clock::now();
 
         Buffer *buffer = (Buffer *) ptr;
-        //lock_guard<mutex> lock(buffer->ready_lock);
 
         // get calculation time
         uint64_t calc_start = 0, calc_end = 0;
@@ -539,7 +574,6 @@ struct RNG_private
 
         // notify main thread
         buffer->ready = true;
-        //buffer->ready_cond.notify_one();
 
         nanoseconds calc_time(calc_end - calc_start);
 
@@ -594,7 +628,13 @@ inline __attribute__((always_inline)) long double RNG_private::get_random<long d
 template <>
 inline __attribute__((always_inline)) bool RNG_private::get_random<bool>()
 {
-    return get_random<uint8_t>() % 2;
+    const bool ret = (_bool_reg >> _bool_reg_offset++) & 1;
+    if (_bool_reg_offset > sizeof(uint64_t))
+    {
+        _bool_reg = get_random<uint64_t>();
+        _bool_reg_offset = 0;
+    }
+    return ret;
 }
 
 
