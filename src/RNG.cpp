@@ -154,6 +154,7 @@ static mt19937_64 __generator;
 static vector<cl::Device> __devices;
 static array<map<cl::Device *, cl::Program>, N_ALGORITHMS> __programs;
 static array<nanoseconds, N_ALGORITHMS> __compilation_times;
+static map<cl::Device *, cl::Context> __context;
 static size_t __device_id = 0;
 
 static atomic<nanoseconds> __sum_init_time_deleted(nanoseconds::zero());
@@ -262,7 +263,8 @@ struct RNG_private
         cl::Device &device   = __devices[device_id];
         bool program_built   = __programs[algorithm].count(&device) > 0;
         cl::Program &program = __programs[algorithm][&device];
-        cl::Context context(device);
+        auto [it, _] = __context.emplace(&device, device);
+        cl::Context &context = it->second;
 
         if (!program_built)
         {

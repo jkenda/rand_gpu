@@ -89,7 +89,7 @@ fastest_multiplier: lib/librand_gpu.so test/fastest_multiplier.c RNG.o
 	@mkdir -p bin
 	@mkdir -p bin/static
 	$(CC) $(CFLAGS) -Llib -Wno-unused-value -o bin/fastest_multiplier test/fastest_multiplier.c -lrand_gpu
-	$(CC) $(CFLAGS) -Wno-unused-value -o bin/static/fastest_multiplier test/fastest_multiplier.c RNG.o -lrand_gpu -lOpenCL -lstdc++
+	$(CC) $(CFLAGS) -Wno-unused-value -o bin/static/fastest_multiplier test/fastest_multiplier.c RNG.o -lOpenCL -lstdc++
 
 speedup_measurement: lib/librand_gpu.so test/speedup_measurement.cpp RNG.o
 	@mkdir -p bin/c++

@@ -42,6 +42,7 @@ int main(int argc, char **argv)
     printf("avg calculation time: %e ms\n", rand_gpu_rng_avg_gpu_calculation_time(rng) / (float) 1000);
     printf("avg transfer time:    %e ms\n", rand_gpu_rng_avg_gpu_transfer_time(rng) / (float) 1000);
     printf("lib avg ≃ %lf (+-%f), %f s\n", avg, ABS(avg - 0.5), time_lib);
+    fflush(stdout);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
