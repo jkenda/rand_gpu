@@ -131,6 +131,14 @@ double rand_gpu_double(rand_gpu_rng *rng);
 long double rand_gpu_long_double(rand_gpu_rng *rng);
 
 /**
+ * @brief Returns next random number.
+ * @param rng RNG to retrieve the random number from
+ * @param dst where to put the random bytes
+ * @param nbytes how many bytes to copy
+ */
+void rand_gpu_rng_put_random(rand_gpu_rng *rng, void *dst, const size_t nbytes);
+
+/**
  * @brief Discards u bytes from RNG's buffer.
  */
 void rand_gpu_rng_discard(rand_gpu_rng *rng, uint64_t z);

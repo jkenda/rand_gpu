@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <pthread.h>
+#include <omp.h>
 #include "../include/rand_gpu.h"
 
 #define SAMPLES (10000000000UL)
@@ -46,7 +47,8 @@ float pi_lib(size_t n_buffers, size_t multi)
 
     #pragma omp parallel
     {
-        rand_gpu_rng *rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
+        rand_gpu_rng *rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_PCG6432, n_buffers, multi);
+        rand_gpu_rng_discard(rng, rand_gpu_rng_buffer_size(rng) * omp_get_thread_num() / omp_get_num_threads());
 
         uint_fast64_t cnt_l = 0;
 

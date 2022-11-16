@@ -4,6 +4,7 @@ lib/
 *.o
 output*
 *.csv
+*.ods
 callgrind*
 cachegrind*
 kernel.hpp

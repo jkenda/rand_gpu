@@ -44,7 +44,7 @@ print: lib/librand_gpu.so examples/print.c
 	$(CC) $(CFLAGS) -Llib -o bin/print examples/print.c -lrand_gpu
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/print examples/print.cpp -lrand_gpu
 
-pi: lib/librand_gpu.so examples/pi.c
+pi: lib/librand_gpu.so examples/pi.c RNG.o
 	@mkdir -p bin/c++
 	@mkdir -p bin/static/c++
 	$(CC) $(CFLAGS) -Llib -o bin/pi examples/pi.c -lrand_gpu
@@ -52,7 +52,7 @@ pi: lib/librand_gpu.so examples/pi.c
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/pi examples/pi.cpp -lrand_gpu
 	$(CPPC) $(CPPFLAGS) -o bin/static/c++/pi examples/pi.cpp RNG.o -lOpenCL
 
-pi_simple: lib/librand_gpu.so examples/pi_simple.c
+pi_simple: lib/librand_gpu.so examples/pi_simple.c RNG.o
 	@mkdir -p bin/c++
 	@mkdir -p bin/static/c++
 	$(CC) $(CFLAGS) -Llib -o bin/pi_simple examples/pi_simple.c -lrand_gpu
@@ -65,9 +65,9 @@ pi_parallel: lib/librand_gpu.so examples/pi_parallel.cpp
 	$(CC) $(CFLAGS) -Llib -o bin/pi_parallel examples/pi_parallel.c -lm -lrand_gpu -fopenmp
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/pi_parallel examples/pi_parallel.cpp -lm -lrand_gpu -fopenmp
 
-coin_flip: lib/librand_gpu.so examples/coin_flip.c
+coin_flip: lib/librand_gpu.so examples/coin_flip.c RNG.o
 	@mkdir -p bin/c++
-	@mkdir -p bin/examples/c++
+	@mkdir -p bin/static/c++
 	$(CC) $(CFLAGS) -Llib -o bin/coin_flip examples/coin_flip.c -lm -lrand_gpu
 	$(CC) $(CFLAGS) -o bin/static/coin_flip examples/coin_flip.c RNG.o -lm -lOpenCL -lstdc++
 
@@ -85,11 +85,13 @@ frequency: lib/librand_gpu.so test/frequency.cpp
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/frequency test/frequency.cpp -lrand_gpu -fopenmp
 
 
-fastest_multiplier: lib/librand_gpu.so test/fastest_multiplier.c
-	@mkdir -p bin/c++
+fastest_multiplier: lib/librand_gpu.so test/fastest_multiplier.c RNG.o
+	@mkdir -p bin
+	@mkdir -p bin/static
 	$(CC) $(CFLAGS) -Llib -Wno-unused-value -o bin/fastest_multiplier test/fastest_multiplier.c -lrand_gpu
+	$(CC) $(CFLAGS) -Wno-unused-value -o bin/static/fastest_multiplier test/fastest_multiplier.c RNG.o -lrand_gpu -lOpenCL -lstdc++
 
-speedup_measurement: lib/librand_gpu.so test/speedup_measurement.cpp
+speedup_measurement: lib/librand_gpu.so test/speedup_measurement.cpp RNG.o
 	@mkdir -p bin/c++
 	@mkdir -p bin/static/c++
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/speedup_measurement test/speedup_measurement.cpp -lrand_gpu

@@ -1,27 +1,27 @@
 #include <iostream>
 #include <cstdint>
+#include <array>
 #include "../include/RNG.hpp"
 
-#define SAMPLES (256*1024)
+typedef uint8_t type;
+#define SIZE (1 << (8 * sizeof(type)))
+#define SAMPLES (SIZE * 1024 * 128)
 
 using namespace std;
 
-size_t frequency[256];
-
+array<size_t, SIZE> frequency;
+array<type, SAMPLES> samples = {0};
+ 
 int main()
 {
     rand_gpu::RNG<RAND_GPU_ALGORITHM_MT19937> rng(2, 1);
+    rng.put_random(&samples, sizeof(samples));
 
-    for (size_t i = 0; i < SAMPLES; i++)
-    {
-        auto num = rng.get_random<uint8_t>();
+    for (const type &num : samples)
         frequency[num]++;
-    }
 
-    cout << "number;frequency\n";
+    cout << "frequency\n";
 
-    for (int i = 0; i < 256; i++)
-    {
-        cout << i << ';' << frequency[i] << '\n';
-    }
+    for (size_t i = 0; i < SIZE; i++)
+        cout << frequency[i] << '\n';
 }

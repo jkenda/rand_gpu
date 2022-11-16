@@ -207,7 +207,7 @@ struct RNG_private
     nanoseconds _gpu_calculation_time_total = nanoseconds::zero();
     nanoseconds _gpu_transfer_time_total = nanoseconds::zero();
 
-    atomic<size_t> _n_gpu_transfers= 0;
+    atomic<size_t> _n_gpu_transfers = 0;
     atomic<size_t> _n_gpu_calculations = 0;
     atomic<size_t> _n_buffer_switches = 0;
     atomic<size_t> _n_buffer_misses = 0;
@@ -223,48 +223,46 @@ struct RNG_private
         auto start = chrono::system_clock::now();
         size_t device_id = 0;
 
+        __constructor_lock.lock();
+
+        if (!__initialized)
         {
-            lock_guard<mutex> lock(__constructor_lock);
+            cl::Platform platform;
 
-            if (!__initialized)
+            // get platforms and devices
+            try
             {
-                cl::Platform platform;
-
-                // get platforms and devices
-                try
-                {
-                    cl::Platform::get(&platform);
-                    platform.getDevices(CL_DEVICE_TYPE_GPU, &__devices);
-                }
-                catch (const cl::Error &err)
-                {
-                    cerr << "No openCL platforms/devices found!\n";
-                    throw err;
-                }
-
-                // initialize host RNG for generating seeds
-                random_device dev;
-                __generator = mt19937_64(((uint64_t) dev() << 32) | dev());
-
-                __initialized = true;
+                cl::Platform::get(&platform);
+                platform.getDevices(CL_DEVICE_TYPE_GPU, &__devices);
+            }
+            catch (const cl::Error &err)
+            {
+                cerr << "No openCL platforms/devices found!\n";
+                throw err;
             }
 
-            // generate seed
-            if (use_custom_seed)
-                seed = custom_seed;
-            else
-                seed = __generator();
+            // initialize host RNG for generating seeds
+            random_device dev;
+            __generator = mt19937_64(((uint64_t) dev() << 32) | dev());
 
-            // distribute devices among instances
-            device_id = __device_id;
-            __device_id = (__device_id + 1) % __devices.size();
+            __initialized = true;
         }
+
+        // generate seed
+        if (use_custom_seed)
+            seed = custom_seed;
+        else
+            seed = __generator();
+
+        // distribute devices among instances
+        device_id = __device_id;
+        __device_id = (__device_id + 1) % __devices.size();
 
         // create context and program
         cl::Device &device   = __devices[device_id];
         bool program_built   = __programs[algorithm].count(&device) > 0;
         cl::Program &program = __programs[algorithm][&device];
-        cl::Context context  = cl::Context(device);
+        cl::Context context(device);
 
         if (!program_built)
         {
@@ -287,6 +285,9 @@ struct RNG_private
                 }
             }
         }
+
+        __constructor_lock.unlock();
+
 
         // create command queue
         _queue = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE);
@@ -327,7 +328,7 @@ struct RNG_private
         case RAND_GPU_ALGORITHM_MT19937:
             // 32-bit seeds
             {
-                ranlux48 seed_generator(seed);
+                mt19937 seed_generator(seed);
                 vector<uint32_t> seeds(_global_size[0]);
                 for (size_t i = 0; i < _global_size[0]; i++)
                     seeds[i] = seed_generator();
@@ -422,8 +423,9 @@ struct RNG_private
         __rngs.erase(this);
     }
 
-    inline __attribute__((always_inline)) void fill_buffer(Buffer &buffer)
+    inline __attribute__((always_inline)) void switch_and_fill_buffer(Buffer &buffer)
     {
+        buffer.ready = false;
         if (_unified_memory)
         {
             // calculate next batch of numbers
@@ -444,6 +446,11 @@ struct RNG_private
             buffer.calculated_event.setCallback(CL_COMPLETE, calculated, &buffer);
         }
         buffer.start_time = system_clock::now();
+
+        // switch active buffer
+        _active_buf_id = (_active_buf_id + 1) % _n_buffers;
+        _buf_offset = 0;
+        _n_buffer_switches++;
     }
 
 
@@ -469,47 +476,44 @@ struct RNG_private
 
         // out of numbers in current buffer
         if (_buf_offset >= _buf_limit)
-        {
-            active_buf.ready = false;
-            fill_buffer(active_buf);
-
-            // switch active buffer
-            _active_buf_id = (_active_buf_id + 1) % _n_buffers;
-            _buf_offset = 0;
-            _n_buffer_switches++;
-        }
+            switch_and_fill_buffer(active_buf);
 
         return num;
     }
 
-    inline __attribute__((always_inline)) void copy_random(void *dst, const size_t nbytes)
+    inline __attribute__((always_inline)) void put_random(void *dst, const size_t &nbytes)
     {
-        Buffer &active_buf = _buffers[_active_buf_id];
+        Buffer *active_buf = &_buffers[_active_buf_id];
 
         // just switched buffers - wait for buffer to be ready
         if (_buf_offset == 0)
         {
-            if (!active_buf.ready) 
+            if (!active_buf->ready) 
             {
                 _n_buffer_misses++;
-                while (!active_buf.ready); 
+                while (!active_buf->ready); 
             }
         }
-
-        // retrieve number from buffer
-        memcpy(dst, &active_buf.host[_buf_offset], nbytes);
-        _buf_offset += nbytes;
-
-        // out of numbers in current buffer
-        if (_buf_offset >= _buf_limit)
+        else if (_buf_offset + nbytes > _buffer_size)
         {
-            active_buf.ready = false;
-            fill_buffer(active_buf);
+            size_t transferred_bytes = _buffer_size - _buf_offset;
+            memcpy(dst, &active_buf->host[_buf_offset], transferred_bytes);
+            size_t transfer_size = 0;
 
-            // switch active buffer
-            _active_buf_id = (_active_buf_id + 1) % _n_buffers;
-            _buf_offset = 0;
-            _n_buffer_switches++;
+            while (transferred_bytes < nbytes)
+            {
+                switch_and_fill_buffer(*active_buf);
+                active_buf = &_buffers[_active_buf_id];
+                transfer_size = min(nbytes - transferred_bytes, _buffer_size);
+                memcpy((uint8_t *) dst + transferred_bytes, active_buf->host, transfer_size);
+                transferred_bytes += transfer_size;
+            }
+            _buf_offset = transfer_size;
+        }
+        else
+        {
+            memcpy(dst, &active_buf->host[_buf_offset], nbytes);
+            _buf_offset += nbytes;
         }
     }
 
@@ -519,16 +523,7 @@ struct RNG_private
 
         // out of numbers in current buffer
         if (_buf_offset >= _buf_limit)
-        {
-            Buffer &active_buf = _buffers[_active_buf_id];
-            active_buf.ready = false;
-            fill_buffer(_buffers[_active_buf_id]);
-
-            // switch active buffer
-            _active_buf_id = (_active_buf_id + 1) % _n_buffers;
-            _buf_offset = 0;
-            _n_buffer_switches++;
-        }
+            switch_and_fill_buffer(_buffers[_active_buf_id]);
     }
 
     static void calculated(cl_event e, cl_int _s, void *ptr)
@@ -685,6 +680,8 @@ float       rand_gpu_float(rand_gpu_rng *rng)       { return ((RNG_private *) rn
 double      rand_gpu_double(rand_gpu_rng *rng)      { return ((RNG_private *) rng)->get_random<double>();      }
 long double rand_gpu_long_double(rand_gpu_rng *rng) { return ((RNG_private *) rng)->get_random<long double>(); }
 
+void rand_gpu_rng_put_random(rand_gpu_rng *rng, void *dst, const size_t nbytes) { ((RNG_private *) rng)->put_random(dst, nbytes); }
+
 size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng)              { return ((const RNG_private *) rng)->_buffer_size; }
 size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng)          { return ((const RNG_private *) rng)->_n_buffer_switches; }
 size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng)            { return ((const RNG_private *) rng)->_n_buffer_misses; }
@@ -748,6 +745,12 @@ namespace rand_gpu
     T RNG<A>::get_random()
     {
         return d_ptr_->get_random<T>();
+    }
+
+    template <rand_gpu_algorithm A>
+    void RNG<A>::put_random(void *dst, const size_t &nbytes)
+    {
+        return d_ptr_->put_random(dst, nbytes);
     }
 
     template <rand_gpu_algorithm A>

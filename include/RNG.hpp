@@ -59,11 +59,17 @@ namespace rand_gpu
 
         /**
          * @brief Returns next random number.
-         * @tparam T type of random number to be returned - implemented for all primitive types, 
-         *         however, only 32- and 64-bit numbers have been tested for true randomness. 
+         * @tparam T type of random number to be returned - implemented for all primitive types.
          */
         template <typename T = uint32_t>
         T get_random();
+
+        /**
+         * @brief Returns next random number.
+         * @param dst where to put the random bytes
+         * @param nbytes how many bytes to copy
+         */
+        void put_random(void *dst, const size_t &nbytes);
 
         /**
          * @brief Returns next random number.

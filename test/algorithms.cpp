@@ -4,7 +4,7 @@
 #include <cmath>
 #include <chrono>
 
-#define SAMPLES (100000000UL)
+#define SAMPLES (300000000UL)
 
 using std::chrono::system_clock;
 using std::chrono::duration_cast;
@@ -32,6 +32,7 @@ void print()
     for (size_t i = 0; i < 256; i++)
     {
         cout << (short) rng.template get_random<uint8_t>() << ' ';
+        rng.discard(rng.buffer_size());
     }
     cout << "\n\n";
 }

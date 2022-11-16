@@ -10,7 +10,7 @@
 #include "../include/rand_gpu.h"
 
 #define ABS(A) ((A >= 0) ? (A) : -(A))
-#define SAMPLES (1000000000UL)
+#define SAMPLES (200000000UL)
 static const size_t N_ALGORITHMS = RAND_GPU_ALGORITHM_XORSHIFT6432STAR - RAND_GPU_ALGORITHM_KISS09 + 1;
 
 struct perf
@@ -35,8 +35,8 @@ float get_time(enum rand_gpu_algorithm algorithm, int n_buffers, int multi)
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     for (uint32_t i = 0; i < SAMPLES; i++) {
-        rand_gpu_float(rng);
-        rand_gpu_float(rng);
+        rand_gpu_u32(rng);
+        rand_gpu_u32(rng);
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
@@ -57,8 +57,8 @@ int main()
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     for (uint32_t i = 0; i < SAMPLES; i++) {
-        rand() / (float) RAND_MAX;
-        rand() / (float) RAND_MAX;
+        rand();
+        rand();
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
