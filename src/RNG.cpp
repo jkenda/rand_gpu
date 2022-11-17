@@ -239,6 +239,7 @@ struct RNG_private
             catch (const cl::Error &err)
             {
                 cerr << "No openCL platforms/devices found!\n";
+                cerr << "Forgot 'srun'?";
                 throw err;
             }
 
@@ -263,7 +264,7 @@ struct RNG_private
         cl::Device &device   = __devices[device_id];
         bool program_built   = __programs[algorithm].count(&device) > 0;
         cl::Program &program = __programs[algorithm][&device];
-        auto [it, _] = __context.emplace(&device, device);
+        auto [it, _] = __context.try_emplace(&device, device);
         cl::Context &context = it->second;
 
         if (!program_built)
@@ -317,6 +318,7 @@ struct RNG_private
         cl::Event initialized;
         k_init.setArg(0, _state_buf);
 
+        vector<uint64_t> seeds(_global_size[0]);
         cl::Buffer cl_seeds;
 
         switch (algorithm)
@@ -325,32 +327,29 @@ struct RNG_private
         case RAND_GPU_ALGORITHM_TYCHE_I:
             // a single seed for all threads
             k_init.setArg(1, sizeof(uint64_t), &seed);
-            _queue.enqueueNDRangeKernel(k_init, 0, _global_size);
             break;
         case RAND_GPU_ALGORITHM_MT19937:
             // 32-bit seeds
             {
-                mt19937 seed_generator(seed);
-                vector<uint32_t> seeds(_global_size[0]);
-                for (size_t i = 0; i < _global_size[0]; i++)
-                    seeds[i] = seed_generator();
-                cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, _unified_memory);
-                k_init.setArg(1, cl_seeds);
-                _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
+                mt19937_64 seed_generator(seed);
+                seeds.resize(_global_size[0] / 2);
+                for (auto& seed : seeds)
+                    seed = seed_generator();
             }
             break;
         default:
             // 64-bit seeds
             {
                 mt19937_64 seed_generator(seed);
-                vector<uint64_t> seeds(_global_size[0]);
-                for (size_t i = 0; i < _global_size[0]; i++)
-                    seeds[i] = seed_generator();
-                cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, true);
-                k_init.setArg(1, cl_seeds);
-                _queue.enqueueNDRangeKernel(k_init, 0, _global_size);
+                seeds.resize(_global_size[0]);
+                for (auto& seed : seeds)
+                    seed = seed_generator();
             }
         }
+
+        cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, _unified_memory);
+        k_init.setArg(1, cl_seeds);
+        _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
 
         // create and bind buffers
         for (Buffer &buffer : _buffers)
