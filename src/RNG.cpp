@@ -239,13 +239,14 @@ struct RNG_private
             catch (const cl::Error &err)
             {
                 cerr << "No openCL platforms/devices found!\n";
-                cerr << "Forgot 'srun'?";
+                cerr << "Forgot 'srun'?\n";
                 throw err;
             }
 
             // initialize host RNG for generating seeds
             random_device dev;
-            __generator = mt19937_64(((uint64_t) dev() << 32) | dev());
+            uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+            __generator = mt19937_64(dist(dev));
 
             __initialized = true;
         }
@@ -318,7 +319,7 @@ struct RNG_private
         cl::Event initialized;
         k_init.setArg(0, _state_buf);
 
-        vector<uint64_t> seeds(_global_size[0]);
+        vector<uint64_t> seeds(0);
         cl::Buffer cl_seeds;
 
         switch (algorithm)
@@ -335,6 +336,8 @@ struct RNG_private
                 seeds.resize(_global_size[0] / 2);
                 for (auto& seed : seeds)
                     seed = seed_generator();
+                cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, _unified_memory);
+                k_init.setArg(1, cl_seeds);
             }
             break;
         default:
@@ -344,11 +347,11 @@ struct RNG_private
                 seeds.resize(_global_size[0]);
                 for (auto& seed : seeds)
                     seed = seed_generator();
+                cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, _unified_memory);
+                k_init.setArg(1, cl_seeds);
             }
         }
 
-        cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, _unified_memory);
-        k_init.setArg(1, cl_seeds);
         _queue.enqueueNDRangeKernel(k_init, cl::NullRange, _global_size);
 
         // create and bind buffers
