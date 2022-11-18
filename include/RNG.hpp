@@ -28,14 +28,12 @@ namespace rand_gpu
     public:
         /**
          * @brief Construct a new RNG object
-         * 
          */
         RNG();
 
         /**
          * @brief Construct a new RNG object
          * 
-         * @param algorithm Algorithm for the RNG
          * @param n_buffers Number of buffers for storing random numbers
          * @param multi buffer size multiplier
          */
@@ -45,15 +43,13 @@ namespace rand_gpu
          * @brief Construct a new RNG object
          * 
          * @param seed Custom seed
-         * @param algorithm Algorithm for the RNG
          * @param n_buffers Number of buffers for storing random numbers
-         * @param multi buffer size multiplier
+         * @param multi Buffer size multiplier
          */
         RNG(uint64_t seed, size_t n_buffers, size_t multi);
 
         /**
          * @brief Destroy the RNG object
-         * 
          */
         ~RNG();
 
