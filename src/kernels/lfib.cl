@@ -24,7 +24,7 @@ Generates a random 64-bit unsigned integer using lfib RNG.
 
 @param state State of the RNG to use.
 */
-#define lfib_ulong(state) _lfib_ulong(&state)
+#define lfib_ulong(state) (_lfib_ulong(&state) & ~1 | (_lfib_ulong(&state) >> 1) & 1)
 ulong _lfib_ulong(__global lfib_state* state){
 	/*state->p1++;
 	state->p1%=LFIB_LAG1;

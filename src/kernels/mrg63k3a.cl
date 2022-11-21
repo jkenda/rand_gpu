@@ -34,7 +34,7 @@ Internal function. Advances state of mrg63k3a RNG and returns generated number.
 
 @param state Pointer to state of the RNG to use.
 */
-ulong mrg63k3a_advance(__global mrg63k3a_state* state){
+uint mrg63k3a_advance(__global mrg63k3a_state* state){
 	long h, p12, p13, p21, p23;
 	/* Component 1 */
 	h = state->s10 / MRG63K3A_Q13;
@@ -101,11 +101,7 @@ Generates a random 64-bit unsigned integer using mrg63k3a RNG.
 
 @param state State of the RNG to use.
 */
-#define mrg63k3a_ulong(state) (mrg63k3a_advance(&state) << 1)//_mrg63k3a_ulong(&state)
-//mrg63k3a generates only 63 random bits - MSB is always 0. We shift output, since TestU01 ignores LSB.
-ulong _mrg63k3a_ulong(__global mrg63k3a_state* state){
-	return mrg63k3a_advance(state) << 1;
-}
+#define mrg63k3a_ulong(state) ((ulong) mrg63k3a_advance(&state) << 32 | mrg63k3a_advance(&state))//_mrg63k3a_ulong(&state)
 
 __kernel void mrg63k3a_init(__global mrg63k3a_state *states, __global ulong *seeds)
 {

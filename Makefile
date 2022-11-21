@@ -9,12 +9,13 @@ SLURM_ARGS= --reservation=fri -c2 -G2
 
 default: lib
 
-all: print pi pi_simple pi_parallel coin_flip algorithms equality frequency fastest_multiplier speedup_measurement
+all: print pi pi_simple pi_urandom pi_parallel coin_flip myurandom algorithms equality frequency fastest_multiplier speedup_measurement
 lib: lib/librand_gpu.so
 
 lib/librand_gpu.so: RNG.o
 	@mkdir -p lib
 	$(CPPC) $(CPPFLAGS) -shared -o lib/librand_gpu.so RNG.o -lOpenCL -flto
+	-bin/test_kernel
 
 install: lib/librand_gpu.so
 #	@mkdir -p ~/.local/lib/
@@ -28,10 +29,9 @@ run_slurm: pi_parallel
 	LD_LIBRARY_PATH=lib srun $(SLURM_ARGS) bin/pi_parallel | tee output &
 
 
-bin/test_kernel: tools/test_kernel.cpp kernel.hpp
+bin/test_kernel: tools/test_kernel.cpp
 	@mkdir -p bin/c++
 	$(CPPC) $(CPPFLAGS) -o bin/test_kernel tools/test_kernel.cpp -lOpenCL
-	-LD_LIBRARY_PATH=lib bin/test_kernel
 
 RNG.o: include/RNG.hpp src/RNG.cpp kernel.hpp bin/test_kernel
 	$(CPPC) $(CPPFLAGS) -c src/RNG.cpp -fPIC
@@ -60,6 +60,11 @@ pi_simple: lib/librand_gpu.so examples/pi_simple.c RNG.o
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/pi_simple examples/pi_simple.cpp -lrand_gpu
 	$(CPPC) $(CPPFLAGS) -o bin/static/c++/pi_simple examples/pi_simple.cpp RNG.o -lOpenCL
 
+pi_urandom: lib/librand_gpu.so examples/pi_urandom.c RNG.o
+	@mkdir -p bin/static
+	$(CC) $(CFLAGS) -Llib -o bin/pi_urandom examples/pi_urandom.c -lrand_gpu
+	$(CC) $(CFLAGS) -o bin/static/pi_urandom examples/pi_urandom.c RNG.o -lOpenCL -lstdc++
+
 pi_parallel: lib/librand_gpu.so examples/pi_parallel.cpp
 	@mkdir -p bin/c++
 	$(CC) $(CFLAGS) -Llib -o bin/pi_parallel examples/pi_parallel.c -lm -lrand_gpu -fopenmp
@@ -70,6 +75,12 @@ coin_flip: lib/librand_gpu.so examples/coin_flip.c RNG.o
 	@mkdir -p bin/static/c++
 	$(CC) $(CFLAGS) -Llib -o bin/coin_flip examples/coin_flip.c -lm -lrand_gpu
 	$(CC) $(CFLAGS) -o bin/static/coin_flip examples/coin_flip.c RNG.o -lm -lOpenCL -lstdc++
+
+myurandom: lib/librand_gpu.so examples/myurandom.c RNG.o
+	@mkdir -p bin/c++
+	@mkdir -p bin/static/c++
+	$(CC) $(CFLAGS) -Llib -o bin/myurandom examples/myurandom.c -lm -lrand_gpu
+	$(CC) $(CFLAGS) -o bin/static/myurandom examples/myurandom.c RNG.o -lm -lOpenCL -lstdc++
 
 
 algorithms: lib/librand_gpu.so test/algorithms.cpp

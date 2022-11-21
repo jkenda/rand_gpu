@@ -37,8 +37,7 @@ Generates a random 32-bit unsigned integer using ran2 RNG. The lowest bit is alw
 
 @param state State of the RNG to use.
 */
-#define ran2_uint(state) (_ran2_uint(&state)<<1)
-ulong _ran2_uint(__global ran2_state* state){
+uint ran2_uint(__global ran2_state* state){
 	
 	int k = state->idum / IQ1;
 	state->idum = IA1 * (state->idum - k*IQ1) - k*IR1;
@@ -98,7 +97,7 @@ Generates a random 64-bit unsigned integer using ran2 RNG.
 
 @param state State of the RNG to use.
 */
-#define ran2_ulong(state) ((((ulong)ran2_uint(state)) << 32) | ran2_uint(state))
+#define ran2_ulong(state) ( (((ulong) ran2_uint(&state)) << 33) | (((ulong) ran2_uint(&state)) << 2) | ran2_uint(&state) & 0b11 )
 
 __kernel void ran2_init(__global ran2_state *states, __global ulong *seeds)
 {

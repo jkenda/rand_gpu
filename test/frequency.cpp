@@ -14,7 +14,7 @@ array<type, SAMPLES> samples = {0};
  
 int main()
 {
-    rand_gpu::RNG<RAND_GPU_ALGORITHM_MT19937> rng(2, 1);
+    rand_gpu::RNG<RAND_GPU_ALGORITHM_LFIB> rng(2, 1);
     rng.put_random(&samples, sizeof(samples));
 
     for (const type &num : samples)
