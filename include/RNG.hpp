@@ -32,6 +32,13 @@ namespace rand_gpu
         RNG();
 
         /**
+         * @brief Construct a new RNG object that wraps rng.
+         *
+         * @param rng rng to wrap the newly constructed RNG around
+         */
+        RNG(rand_gpu_rng rng);
+
+        /**
          * @brief Construct a new RNG object
          * 
          * @param n_buffers Number of buffers for storing random numbers

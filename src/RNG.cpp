@@ -735,6 +735,13 @@ namespace rand_gpu
     }
 
     template <rand_gpu_algorithm A>
+    RNG<A>::RNG(rand_gpu_rng rng)
+    :
+        _impl_ptr((RNG_impl *) rng)
+    {
+    }
+
+    template <rand_gpu_algorithm A>
     RNG<A>::RNG(size_t n_buffers, size_t multi)
     :
         _impl_ptr(new RNG_impl(n_buffers, multi, A, false))
