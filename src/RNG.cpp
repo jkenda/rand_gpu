@@ -26,7 +26,7 @@
 #include <cstring>
 #include <atomic>
 #include <chrono>
-#include <thread>
+#include <future>
 
 #define CL_MINIMUM_OPENCL_VERSION       100
 #define CL_TARGET_OPENCL_VERSION        300
@@ -179,7 +179,7 @@ struct RNG_impl
         cl::Buffer device;                              // device buffer
         uint8_t *host = nullptr;                        // host buffer
 
-        atomic<bool> ready = true;                      // flag signifies whether buffer has been filled
+        future<void> ready;                             // flag signifies whether buffer has been filled
         cl::Event transferred_event, calculated_event;  // CL events for used for callbacks
 
         system_clock::time_point start_time;            // time point when kernel was enqueued
@@ -407,8 +407,7 @@ struct RNG_impl
         for (Buffer &buffer : _buffers)
         {
             // wait for the OpenCL thread to finish work
-            while (!buffer.ready || buffer.rng->_n_gpu_calculations < buffer.rng->_n_gpu_transfers)
-                this_thread::sleep_for(nanoseconds(0));
+            buffer.ready.wait();
 
             // unmap host_ptr
             _queue.enqueueUnmapMemObject(buffer.device, buffer.host);
@@ -430,33 +429,64 @@ struct RNG_impl
         __rngs.erase(this);
     }
 
-    inline __attribute__((always_inline)) void switch_and_fill_buffer(Buffer &buffer)
+    void fill_buffer(Buffer &buffer)
     {
-        buffer.ready = false;
-
         // reading buffers is not neccessary if the GPU is integrated
         if (_unified_memory)
         {
             // calculate next batch of numbers
             _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size, cl::NullRange,
                                         NULL, &buffer.calculated_event);
-            buffer.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &buffer);
+
+            auto start_time = system_clock::now();
+            buffer.calculated_event.wait();
+            auto end_time = system_clock::now();
+
+            // get calculation time
+            uint64_t calc_start = buffer.calculated_event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+            uint64_t calc_end   = buffer.calculated_event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+
+            nanoseconds calc_time(calc_end - calc_start);
+
+            // update calculation and transfer time
+            _gpu_calculation_time_total += calc_time;
+            _gpu_transfer_time_total    += end_time - start_time - calc_time;
+            _n_gpu_transfers++;
+            _n_gpu_calculations++;
         }
         else
         {
+
             // read calculated numbers
             _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host,
                                      NULL, &buffer.transferred_event);
-            buffer.transferred_event.setCallback(CL_COMPLETE, transferred, &buffer);
+
+            auto start_time = system_clock::now();
+            buffer.transferred_event.wait();
+            auto end_time = system_clock::now();
+
+            // update transfer time
+            _gpu_transfer_time_total += end_time - start_time;
+            _n_gpu_transfers++;
 
             // calculate next batch
             _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange,
                                         NULL, &buffer.calculated_event);
-            buffer.calculated_event.setCallback(CL_COMPLETE, calculated, &buffer);
+
+            // get calculation time
+            uint64_t calc_start = buffer.calculated_event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+            uint64_t calc_end   = buffer.calculated_event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+            nanoseconds calc_time(calc_end - calc_start);
+
+            _gpu_calculation_time_total += calc_time;
+            _n_gpu_calculations++;
         }
 
-        // save time point when kernel has been enqueued
-        buffer.start_time = system_clock::now();
+    }
+
+    inline __attribute__((always_inline)) void switch_and_fill_buffer(Buffer &buffer)
+    {
+        buffer.ready = async(launch::async, [&]{ fill_buffer(buffer); });
 
         // switch active buffer
         _active_buf_id = (_active_buf_id + 1) % _n_buffers;
@@ -471,10 +501,10 @@ struct RNG_impl
         Buffer &active_buf = _buffers[_active_buf_id];
 
         // just switched buffers - wait for buffer to be ready
-        if (_buf_offset == 0 && !active_buf.ready)
+        if (_buf_offset == 0 && !active_buf.ready.valid())
         {
             _n_buffer_misses++;
-            while (!active_buf.ready);
+            active_buf.ready.wait();
         }
 
         // retrieve number from buffer
@@ -496,10 +526,10 @@ struct RNG_impl
         // just switched buffers - wait for buffer to be ready
         if (_buf_offset == 0)
         {
-            if (!active_buf->ready) 
+            if (!active_buf->ready.valid())
             {
                 _n_buffer_misses++;
-                while (!active_buf->ready); 
+                active_buf->ready.wait();
             }
         }
         else if (_buf_offset + nbytes > _buffer_size)
@@ -538,59 +568,6 @@ struct RNG_impl
             switch_and_fill_buffer(_buffers[_active_buf_id]);
     }
 
-    static void calculated(cl_event e, cl_int _s, void *ptr)
-    {
-        Buffer *buffer = (Buffer *) ptr;
-        
-        // get calculation time
-        uint64_t calc_start = 0, calc_end = 0;
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &calc_start, NULL);
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(cl_ulong), &calc_end,   NULL);
-        nanoseconds calc_time(calc_end - calc_start);
-	       
-        buffer->rng->_gpu_calculation_time_total += calc_time;
-        buffer->rng->_n_gpu_calculations++;
-    }
-
-    static void transferred(cl_event _e, cl_int _s, void *ptr)
-    {
-        // get current time
-        auto end_time = system_clock::now();
-
-        Buffer *buffer = (Buffer *) ptr;
-
-        // update transfer time
-        buffer->rng->_gpu_transfer_time_total += end_time - buffer->start_time;
-        buffer->rng->_n_gpu_transfers++;
-
-        // notify main thread
-        buffer->ready = true;
-    }
-
-    static void calculated_unified(cl_event e, cl_int _s, void *ptr)
-    {
-        // get current time
-        auto end_time = system_clock::now();
-
-        Buffer *buffer = (Buffer *) ptr;
-
-        // get calculation time
-        uint64_t calc_start = 0, calc_end = 0;
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(uint64_t), &calc_start, NULL);
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(uint64_t), &calc_end,   NULL);
-
-        // notify main thread
-        buffer->ready = true;
-
-        nanoseconds calc_time(calc_end - calc_start);
-
-        // update calculation and transfer time
-        buffer->rng->_gpu_calculation_time_total += calc_time;
-        buffer->rng->_gpu_transfer_time_total    += end_time - buffer->start_time - calc_time;
-        buffer->rng->_n_gpu_transfers++;
-        buffer->rng->_n_gpu_calculations++;
-    }
-    
     nanoseconds avg_gpu_calculation_time() const
     {
         if (_n_gpu_calculations > 0)
