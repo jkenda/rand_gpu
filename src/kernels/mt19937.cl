@@ -18,10 +18,10 @@ typedef int aligned_int __attribute__((aligned(8)));
 /**
 State of MT19937 RNG.
 */
-typedef struct{
-	uint mt[MT19937_N] __attribute__((aligned(8))); /* the array for the state vector  */
+typedef struct __attribute__((aligned(16))){
+	uint mt[MT19937_N]; /* the array for the state vector  */
 	aligned_int mti;
-} mt19937_state __attribute__((aligned(16)));
+} mt19937_state;
 
 /**
 Generates a random 32-bit unsigned integer using MT19937 RNG.
