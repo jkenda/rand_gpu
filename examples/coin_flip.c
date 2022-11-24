@@ -26,12 +26,12 @@ int main(int argc, char **argv)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    rand_gpu_rng *rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_PHILOX2X32_10, n_buffers, multi);
+    rand_gpu_rng rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_PHILOX2X32_10, n_buffers, multi);
 
     long cnt = 0;
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-        cnt += rand_gpu_bool(rng);
+        cnt += rand_gpu_get_random_bool(rng);
     }
 
     double avg = cnt / (double) SAMPLES;

@@ -131,7 +131,7 @@ uint64_t num_generated_cpu_cpp(const nanoseconds duration, const uint32_t percen
 }
 
 template <typename T>
-uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_gen, rand_gpu_rng *rng)
+uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_gen, rand_gpu_rngrng)
 {
     const uint32_t percent_calc = 100 - percent_gen;
     const uint32_t i = percent_gen / 10;
@@ -253,7 +253,7 @@ int main(int argc, char **argv)
                     }
 
                     int l = log2(multi);
-                    rand_gpu_rng *rng = rand_gpu_new((rand_gpu_algorithm) algorithm, nbuffers, multi);
+                    rand_gpu_rngrng = rand_gpu_new((rand_gpu_algorithm) algorithm, nbuffers, multi);
 
                     for (int nthreads = 1; nthreads <= max_threads; nthreads *= 2)
                     {

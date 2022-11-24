@@ -47,15 +47,15 @@ float pi_lib(size_t n_buffers, size_t multi)
 
     #pragma omp parallel
     {
-        rand_gpu_rng *rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_PCG6432, n_buffers, multi);
+        rand_gpu_rng rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_PCG6432, n_buffers, multi);
         rand_gpu_rng_discard(rng, rand_gpu_rng_buffer_size(rng) * omp_get_thread_num() / omp_get_num_threads());
 
         uint_fast64_t cnt_l = 0;
 
         #pragma omp for schedule(static)
         for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-            float a = rand_gpu_float(rng);
-            float b = rand_gpu_float(rng);
+            float a = rand_gpu_get_random_float(rng);
+            float b = rand_gpu_get_random_float(rng);
             if (sqrt(a*a + b*b) < 1.0f)
                 cnt_l++;
         }

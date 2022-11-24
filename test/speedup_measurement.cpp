@@ -118,7 +118,7 @@ uint64_t num_generated_cpu_cpp(const nanoseconds duration, const uint32_t percen
 }
 
 template <typename T>
-uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_gen, rand_gpu_rng *rng)
+uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_gen, rand_gpu_rng rng)
 {
     const uint32_t percent_calc = 100 - percent_gen;
     const uint32_t i = percent_gen / 10;
@@ -135,7 +135,7 @@ uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_ge
     while (steady_clock::now() - start < duration)
     {
         for (int i = 0; i < SAMPLES; i++)
-            volatile T a = is_same<T, double>::value ? rand_gpu_double(rng) : rand_gpu_float(rng);
+            volatile T a = is_same<T, double>::value ? rand_gpu_get_random_double(rng) : rand_gpu_get_random_float(rng);
 
         auto start_calc = steady_clock::now();
         auto finish_calc = start_calc + time_calc[i];
@@ -166,7 +166,7 @@ int main(int argc, char **argv)
 
     for (int algorithm = RAND_GPU_ALGORITHM_KISS09; algorithm <= RAND_GPU_ALGORITHM_XORSHIFT6432STAR; algorithm++)
     {
-        rand_gpu_rng *rng = rand_gpu_new_rng((rand_gpu_algorithm) algorithm, 2, 1);
+        rand_gpu_rng rng = rand_gpu_new_rng((rand_gpu_algorithm) algorithm, 2, 1);
         rand_gpu_delete_all();
         printf("%s,%f\n", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), 
             rand_gpu_compilation_time((rand_gpu_algorithm) algorithm));
@@ -186,7 +186,7 @@ int main(int argc, char **argv)
             printf("%s,%02d", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), multi);
             for (int n_buffers : n_bufs)
             {
-                rand_gpu_rng *rng = rand_gpu_new_rng((rand_gpu_algorithm) algorithm, n_buffers, multi);
+                rand_gpu_rng rng = rand_gpu_new_rng((rand_gpu_algorithm) algorithm, n_buffers, multi);
                 printf(",%.5f", rand_gpu_rng_init_time(rng));
                 rand_gpu_delete_all();
             }
@@ -233,7 +233,7 @@ int main(int argc, char **argv)
                 printf("%s,%02d,%02d", rand_gpu::algorithm_name((rand_gpu_algorithm) algorithm), n_buffers, multi);
                 fflush(stdout);
 
-                rand_gpu_rng *rng = rand_gpu_new_rng((rand_gpu_algorithm) algorithm, n_buffers, multi);
+                rand_gpu_rng rng = rand_gpu_new_rng((rand_gpu_algorithm) algorithm, n_buffers, multi);
                 
                 for (int i = 0; i <= 10; i++)
                 {

@@ -22,7 +22,7 @@ extern "C" {
 #include <stdbool.h>
 
 
-typedef void rand_gpu_rng;
+typedef struct rand_gpu_rng_impl *rand_gpu_rng;
 
 /**
  * @brief random number generators
@@ -31,14 +31,14 @@ enum rand_gpu_algorithm
 {
     RAND_GPU_ALGORITHM_KISS09,
     RAND_GPU_ALGORITHM_LCG12864,
-    RAND_GPU_ALGORITHM_LFIB,        // problematic
-    RAND_GPU_ALGORITHM_MRG63K3A,    // problematic
+    RAND_GPU_ALGORITHM_LFIB,
+    RAND_GPU_ALGORITHM_MRG63K3A,
     RAND_GPU_ALGORITHM_MSWS,
     RAND_GPU_ALGORITHM_MT19937,
     RAND_GPU_ALGORITHM_MWC64X,
     RAND_GPU_ALGORITHM_PCG6432,
     RAND_GPU_ALGORITHM_PHILOX2X32_10,
-    RAND_GPU_ALGORITHM_RAN2,        // problematic
+    RAND_GPU_ALGORITHM_RAN2,
     RAND_GPU_ALGORITHM_TINYMT64,
     RAND_GPU_ALGORITHM_TYCHE,
     RAND_GPU_ALGORITHM_TYCHE_I,
@@ -49,7 +49,7 @@ enum rand_gpu_algorithm
 /**
  * @brief Initializes a new random number generator with default parameters.
  */
-rand_gpu_rng *rand_gpu_new_rng_default();
+rand_gpu_rng rand_gpu_new_rng_default();
 
 /**
  * @brief Initializes a new random number generator.
@@ -58,7 +58,7 @@ rand_gpu_rng *rand_gpu_new_rng_default();
  * @param n_buffers Number of buffers for storing random numbers
  * @param buffer_multi Buffer size multiplier
  */
-rand_gpu_rng *rand_gpu_new_rng(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
+rand_gpu_rng rand_gpu_new_rng(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
 
 /**
  * @brief Initializes a new random number generator.
@@ -68,13 +68,13 @@ rand_gpu_rng *rand_gpu_new_rng(enum rand_gpu_algorithm algorithm, size_t n_buffe
  * @param n_buffers Number of buffers for storing random numbers
  * @param buffer_multi Buffer size multiplier
  */
-rand_gpu_rng *rand_gpu_new_rng_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
+rand_gpu_rng rand_gpu_new_rng_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
 
 /**
  * @brief Deletes the RNG.
  * @param rng RNG to be deleted
  */
-void rand_gpu_delete_rng(rand_gpu_rng *rng);
+void rand_gpu_delete_rng(rand_gpu_rng rng);
 
 /**
  * @brief Delete all RNGs.
@@ -86,49 +86,49 @@ void rand_gpu_delete_all();
  * @brief Returns next 64-bit random number.
  * @param rng RNG to retrieve the random number from
  */
-uint64_t rand_gpu_u64(rand_gpu_rng *rng);
+uint64_t rand_gpu_rng_get_random_64b(rand_gpu_rng rng);
 
 /**
  * @brief Returns next 32-bit random number.
  * @param rng RNG to retrieve the random number from
  */
-uint32_t rand_gpu_u32(rand_gpu_rng *rng);
+uint32_t rand_gpu_rng_get_random_32b(rand_gpu_rng rng);
 
 /**
  * @brief Returns next 16-bit random number.
  * @param rng RNG to retrieve the random number from
  */
-uint16_t rand_gpu_u16(rand_gpu_rng *rng);
+uint16_t rand_gpu_rng_get_random_16b(rand_gpu_rng rng);
 
 /**
  * @brief Returns next 8-bit random number.
  * @param rng RNG to retrieve the random number from
  */
-uint8_t rand_gpu_u8(rand_gpu_rng *rng);
+uint8_t rand_gpu_rng_get_random_8b(rand_gpu_rng rng);
 
 /**
  * @brief Returns next bool.
  * @param rng RNG to retrieve the random number from
  */
-uint8_t rand_gpu_bool(rand_gpu_rng *rng);
+uint8_t rand_gpu_get_random_bool(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random float.
  * @param rng RNG to retrieve the random number from
  */
-float rand_gpu_float(rand_gpu_rng *rng);
+float rand_gpu_get_random_float(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random double.
  * @param rng RNG to retrieve the random number from
  */
-double rand_gpu_double(rand_gpu_rng *rng);
+double rand_gpu_get_random_double(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random long double.
  * @param rng RNG to retrieve the random number from
  */
-long double rand_gpu_long_double(rand_gpu_rng *rng);
+long double rand_gpu_get_random_long_double(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random number.
@@ -136,50 +136,50 @@ long double rand_gpu_long_double(rand_gpu_rng *rng);
  * @param dst where to put the random bytes
  * @param nbytes how many bytes to copy
  */
-void rand_gpu_rng_put_random(rand_gpu_rng *rng, void *dst, const size_t nbytes);
+void rand_gpu_rng_put_random(rand_gpu_rng rng, void *dst, const size_t nbytes);
 
 /**
  * @brief Discards u bytes from RNG's buffer.
  */
-void rand_gpu_rng_discard(rand_gpu_rng *rng, uint64_t z);
+void rand_gpu_rng_discard(rand_gpu_rng rng, uint64_t z);
 
 
 /**
  * @brief Returns buffer size of RNG (equal for all RNGs).
  * @param rng RNG whose buffer size to retrieve
  */
-size_t rand_gpu_rng_buffer_size(const rand_gpu_rng *rng);
+size_t rand_gpu_rng_buffer_size(const rand_gpu_rng rng);
 
 /**
  * @brief Returns number of times the buffer was switched.
  * @param rng RNG whose buffer switches to retrieve
  */
-size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng *rng);
+size_t rand_gpu_rng_buffer_switches(const rand_gpu_rng rng);
 
 /**
  * @brief Returns number of times we had to wait for GPU to fill the buffer.
  * @param rng RNG whose buffer misses to retrieve
  * (Minimize the number of misses by tweaking n_buffers and buffer_multi for better performance.)
  */
-size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng *rng);
+size_t rand_gpu_rng_buffer_misses(const rand_gpu_rng rng);
 
 /**
  * @brief Returns RNG initialization time in ms.
  * @param rng RNG whose init time to retrieve
  */
-float rand_gpu_rng_init_time(const rand_gpu_rng *rng);
+float rand_gpu_rng_init_time(const rand_gpu_rng rng);
 
 /**
  * @brief Returns average calculation time for GPU in ms
  * @param rng RNG whose GPU calculation time to retrieve
  */
-float rand_gpu_rng_avg_gpu_calculation_time(const rand_gpu_rng *rng);
+float rand_gpu_rng_avg_gpu_calculation_time(const rand_gpu_rng rng);
 
 /**
  * @brief Returns average transfer time for GPU in ms
  * @param rng RNG whose GPU transfer time to retrieve
  */
-float rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng *rng);
+float rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng rng);
 
 
 /**

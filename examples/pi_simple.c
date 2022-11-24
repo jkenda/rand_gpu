@@ -25,13 +25,13 @@ int main(int argc, char **argv)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    rand_gpu_rng *rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
+    rand_gpu_rng rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
 
     long cnt = 0;
 
     for (uint32_t i = 0; i < SAMPLES; i++) {
-        float a = rand_gpu_float(rng);
-        float b = rand_gpu_float(rng);
+        float a = rand_gpu_get_random_float(rng);
+        float b = rand_gpu_get_random_float(rng);
         if (a*a + b*b < 1.0f) {
             cnt++;
         }

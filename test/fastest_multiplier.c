@@ -30,13 +30,13 @@ float get_time(enum rand_gpu_algorithm algorithm, int n_buffers, int multi)
 {
     struct timespec start, end;
 
-    rand_gpu_rng *rng = rand_gpu_new_rng(algorithm, n_buffers, multi);
+    rand_gpu_rng rng = rand_gpu_new_rng(algorithm, n_buffers, multi);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     for (uint32_t i = 0; i < SAMPLES; i++) {
-        rand_gpu_u32(rng);
-        rand_gpu_u32(rng);
+        rand_gpu_rng_get_random_32b(rng);
+        rand_gpu_rng_get_random_32b(rng);
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);

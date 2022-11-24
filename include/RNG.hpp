@@ -1,6 +1,6 @@
 /**
  * @file RNG.hpp
- * @author Jakob Kenda (kenda.jakob@domain.com)
+ * @author Jakob Kenda (kenda.jakob@gmail.com)
  * @brief 
  * @version 0.3
  * @date 2022-04-13
@@ -17,7 +17,7 @@
 #include "rand_gpu.h"
 
 // forward declaration of the hidden struct
-struct RNG_private;
+struct RNG_impl;
 
 
 namespace rand_gpu
@@ -35,7 +35,7 @@ namespace rand_gpu
          * @brief Construct a new RNG object
          * 
          * @param n_buffers Number of buffers for storing random numbers
-         * @param multi buffer size multiplier
+         * @param multi Buffer size multiplier
          */
         RNG(size_t n_buffers, size_t multi);
 
@@ -114,7 +114,7 @@ namespace rand_gpu
         RNG& operator=(RNG&&);
 
     private:
-        RNG_private *d_ptr_;
+        RNG_impl *_impl_ptr;
     };
 
     /**
