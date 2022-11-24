@@ -179,7 +179,7 @@ struct RNG_impl
         cl::Buffer device;                              // device buffer
         uint8_t *host = nullptr;                        // host buffer
 
-        future<void> ready;                             // flag signifies whether buffer has been filled
+        future<void> ready = async([]{ return; });                      // flag signifies whether buffer has been filled
         cl::Event transferred_event, calculated_event;  // CL events for used for callbacks
 
         system_clock::time_point start_time;            // time point when kernel was enqueued
@@ -462,6 +462,10 @@ struct RNG_impl
                                      NULL, &buffer.transferred_event);
 
             auto start_time = system_clock::now();
+            // calculate next batch
+            _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange,
+                                        NULL, &buffer.calculated_event);
+
             buffer.transferred_event.wait();
             auto end_time = system_clock::now();
 
@@ -469,9 +473,7 @@ struct RNG_impl
             _gpu_transfer_time_total += end_time - start_time;
             _n_gpu_transfers++;
 
-            // calculate next batch
-            _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange,
-                                        NULL, &buffer.calculated_event);
+            buffer.calculated_event.wait();
 
             // get calculation time
             uint64_t calc_start = buffer.calculated_event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
@@ -501,11 +503,7 @@ struct RNG_impl
         Buffer &active_buf = _buffers[_active_buf_id];
 
         // just switched buffers - wait for buffer to be ready
-        if (_buf_offset == 0 && !active_buf.ready.valid())
-        {
-            _n_buffer_misses++;
-            active_buf.ready.wait();
-        }
+        active_buf.ready.wait();
 
         // retrieve number from buffer
         T num;
@@ -526,11 +524,7 @@ struct RNG_impl
         // just switched buffers - wait for buffer to be ready
         if (_buf_offset == 0)
         {
-            if (!active_buf->ready.valid())
-            {
-                _n_buffer_misses++;
-                active_buf->ready.wait();
-            }
+            active_buf->ready.wait();
         }
         else if (_buf_offset + nbytes > _buffer_size)
         {

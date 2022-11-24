@@ -48,22 +48,22 @@ pi: lib/librand_gpu.so examples/pi.c RNG.o
 	@mkdir -p bin/c++
 	@mkdir -p bin/static/c++
 	$(CC) $(CFLAGS) -Llib -o bin/pi examples/pi.c -lrand_gpu
-	$(CC) $(CFLAGS) -o bin/static/pi examples/pi.c RNG.o -lstdc++ -lOpenCL
+	$(CC) $(CFLAGS) -o bin/static/pi examples/pi.c RNG.o -lstdc++ -lOpenCL -lpthread
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/pi examples/pi.cpp -lrand_gpu
-	$(CPPC) $(CPPFLAGS) -o bin/static/c++/pi examples/pi.cpp RNG.o -lOpenCL
+	$(CPPC) $(CPPFLAGS) -o bin/static/c++/pi examples/pi.cpp RNG.o -lOpenCL -lpthread
 
 pi_simple: lib/librand_gpu.so examples/pi_simple.c RNG.o
 	@mkdir -p bin/c++
 	@mkdir -p bin/static/c++
 	$(CC) $(CFLAGS) -Llib -o bin/pi_simple examples/pi_simple.c -lrand_gpu
-	$(CC) $(CFLAGS) -o bin/static/pi_simple examples/pi_simple.c RNG.o -lOpenCL -lstdc++
+	$(CC) $(CFLAGS) -o bin/static/pi_simple examples/pi_simple.c RNG.o -lOpenCL -lstdc++ -lpthread
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/pi_simple examples/pi_simple.cpp -lrand_gpu
-	$(CPPC) $(CPPFLAGS) -o bin/static/c++/pi_simple examples/pi_simple.cpp RNG.o -lOpenCL
+	$(CPPC) $(CPPFLAGS) -o bin/static/c++/pi_simple examples/pi_simple.cpp RNG.o -lOpenCL -lpthread
 
 pi_urandom: lib/librand_gpu.so examples/pi_urandom.c RNG.o
 	@mkdir -p bin/static
 	$(CC) $(CFLAGS) -Llib -o bin/pi_urandom examples/pi_urandom.c -lrand_gpu
-	$(CC) $(CFLAGS) -o bin/static/pi_urandom examples/pi_urandom.c RNG.o -lOpenCL -lstdc++
+	$(CC) $(CFLAGS) -o bin/static/pi_urandom examples/pi_urandom.c RNG.o -lOpenCL -lstdc++ -lpthread
 
 pi_parallel: lib/librand_gpu.so examples/pi_parallel.cpp
 	@mkdir -p bin/c++
@@ -74,13 +74,13 @@ coin_flip: lib/librand_gpu.so examples/coin_flip.c RNG.o
 	@mkdir -p bin/c++
 	@mkdir -p bin/static/c++
 	$(CC) $(CFLAGS) -Llib -o bin/coin_flip examples/coin_flip.c -lm -lrand_gpu
-	$(CC) $(CFLAGS) -o bin/static/coin_flip examples/coin_flip.c RNG.o -lm -lOpenCL -lstdc++
+	$(CC) $(CFLAGS) -o bin/static/coin_flip examples/coin_flip.c RNG.o -lm -lOpenCL -lstdc++ -lpthread
 
 myurandom: lib/librand_gpu.so examples/myurandom.c RNG.o
 	@mkdir -p bin/c++
 	@mkdir -p bin/static/c++
 	$(CC) $(CFLAGS) -Llib -o bin/myurandom examples/myurandom.c -lm -lrand_gpu
-	$(CC) $(CFLAGS) -o bin/static/myurandom examples/myurandom.c RNG.o -lm -lOpenCL -lstdc++
+	$(CC) $(CFLAGS) -o bin/static/myurandom examples/myurandom.c RNG.o -lm -lOpenCL -lstdc++ -lpthread
 
 
 algorithms: lib/librand_gpu.so test/algorithms.cpp
@@ -100,13 +100,13 @@ fastest_multiplier: lib/librand_gpu.so test/fastest_multiplier.c RNG.o
 	@mkdir -p bin
 	@mkdir -p bin/static
 	$(CC) $(CFLAGS) -Llib -Wno-unused-value -o bin/fastest_multiplier test/fastest_multiplier.c -lrand_gpu
-	$(CC) $(CFLAGS) -Wno-unused-value -o bin/static/fastest_multiplier test/fastest_multiplier.c RNG.o -lOpenCL -lstdc++
+	$(CC) $(CFLAGS) -Wno-unused-value -o bin/static/fastest_multiplier test/fastest_multiplier.c RNG.o -lOpenCL -lstdc++ -lpthread
 
 speedup_measurement: lib/librand_gpu.so test/speedup_measurement.cpp RNG.o
 	@mkdir -p bin/c++
 	@mkdir -p bin/static/c++
 	$(CPPC) $(CPPFLAGS) -Llib -o bin/c++/speedup_measurement test/speedup_measurement.cpp -lrand_gpu
-	$(CPPC) $(CPPFLAGS) -o bin/static/c++/speedup_measurement test/speedup_measurement.cpp RNG.o -lOpenCL
+	$(CPPC) $(CPPFLAGS) -o bin/static/c++/speedup_measurement test/speedup_measurement.cpp RNG.o -lOpenCL -lpthread
 
 speedup_measurement_parallel: lib/librand_gpu.so test/speedup_measurement_parallel.cpp
 	@mkdir -p bin/c++
