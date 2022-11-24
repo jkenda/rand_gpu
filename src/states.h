@@ -47,10 +47,10 @@ typedef cl_int aligned_int __attribute__((aligned(8)));
 /**
 State of MT19937 RNG.
 */
-typedef struct{
+typedef struct __attribute__((aligned(16))){
 	cl_uint mt[MT19937_N] __attribute__((aligned(8))); /* the array for the state vector  */
 	aligned_int mti;
-} mt19937_state __attribute__((aligned(16)));
+} mt19937_state;
 
 /**
 State of mwc64x RNG.

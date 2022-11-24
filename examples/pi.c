@@ -25,8 +25,8 @@ int main(int argc, char **argv)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    rand_gpu_rng rng0 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_PHILOX2X32_10, n_buffers, multi);
-    rand_gpu_rng rng1 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_PHILOX2X32_10, n_buffers, multi);
+    rand_gpu_rng rng0 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_MT19937, n_buffers, multi);
+    rand_gpu_rng rng1 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_MT19937, n_buffers, multi);
     rand_gpu_rng_discard(rng0, rand_gpu_rng_buffer_size(rng0) / (n_buffers * 2));
     
     long cnt = 0;

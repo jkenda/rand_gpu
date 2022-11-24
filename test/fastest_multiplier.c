@@ -36,7 +36,6 @@ float get_time(enum rand_gpu_algorithm algorithm, int n_buffers, int multi)
 
     for (uint32_t i = 0; i < SAMPLES; i++) {
         rand_gpu_rng_get_random_32b(rng);
-        rand_gpu_rng_get_random_32b(rng);
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
@@ -56,8 +55,7 @@ int main()
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    for (uint32_t i = 0; i < SAMPLES; i++) {
-        rand();
+    for (uint_fast32_t i = 0; i < SAMPLES; i++) {
         rand();
     }
 

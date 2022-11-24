@@ -37,7 +37,7 @@ Generates a random 32-bit unsigned integer using ran2 RNG. The lowest bit is alw
 
 @param state State of the RNG to use.
 */
-uint ran2_uint(__global ran2_state* state){
+inline uint ran2_uint(__global ran2_state* state){
 	
 	int k = state->idum / IQ1;
 	state->idum = IA1 * (state->idum - k*IQ1) - k*IR1;
@@ -73,7 +73,7 @@ Seeds ran2 RNG.
 @param state Variable, that holds state of the generator to be seeded.
 @param seed Value used for seeding. Should be randomly generated for each instance of generator (thread).
 */
-void ran2_seed(__global ran2_state* state, ulong seed){
+inline void ran2_seed(__global ran2_state* state, ulong seed){
 	if(seed == 0){
 		seed = 1;
 	}
