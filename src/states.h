@@ -57,10 +57,10 @@ State of mwc64x RNG.
 */
 typedef union {
 	cl_ulong xc;
-	struct mwc64x_internal{ 
+	struct { 
 		cl_uint x;
 		cl_uint c;
-	};
+	} _;
 } mwc64x_state;
 
 /**
@@ -73,9 +73,9 @@ State of philox2x32_10 RNG.
 */
 typedef union{
 	cl_ulong LR;
-	struct philox_internal{
+	struct {
 		cl_uint L, R;
-	};
+	} _;
 } philox2x32_10_state;
 
 #define   NTAB 32
@@ -104,9 +104,9 @@ typedef struct TINYMT64WP_T {
 State of tyche RNG.
 */
 typedef union{
-	struct tyche_internal{
+	struct {
 		cl_uint a,b,c,d;
-	};
+	} _;
 	cl_ulong res;
 } tyche_state;
 
@@ -114,9 +114,9 @@ typedef union{
 State of tyche_i RNG.
 */
 typedef union{
-	struct tyche_i_internal{
+	struct {
 		cl_uint a,b,c,d;
-	};
+	} _;
 	cl_ulong res;
 } tyche_i_state;
 

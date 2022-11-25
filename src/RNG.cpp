@@ -233,12 +233,21 @@ struct RNG_impl
             try
             {
                 cl::Platform::get(&platform);
+            }
+            catch (const cl::Error &err)
+            {
+                cerr << "No openCL platforms found!\n";
+                cerr << "Forgot 'srun'?\n";
+                throw err;
+            }
+
+            try
+            {
                 platform.getDevices(CL_DEVICE_TYPE_GPU, &__devices);
             }
             catch (const cl::Error &err)
             {
-                cerr << "No openCL platforms/devices found!\n";
-                cerr << "Forgot 'srun'?\n";
+                cerr << "No openCL devices found!\n";
                 throw err;
             }
 
@@ -336,7 +345,7 @@ struct RNG_impl
                 seeds.resize(_global_size[0] / 2);
                 for (auto& seed : seeds)
                     seed = seed_generator();
-                cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, _unified_memory);
+                cl_seeds = cl::Buffer(_queue, seeds.begin(), seeds.end(), true, _unified_memory);
                 k_init.setArg(1, cl_seeds);
             }
             break;
@@ -347,7 +356,7 @@ struct RNG_impl
                 seeds.resize(_global_size[0]);
                 for (auto& seed : seeds)
                     seed = seed_generator();
-                cl_seeds = cl::Buffer(context, seeds.begin(), seeds.end(), true, _unified_memory);
+                cl_seeds = cl::Buffer(_queue, seeds.begin(), seeds.end(), true, true);
                 k_init.setArg(1, cl_seeds);
             }
         }
