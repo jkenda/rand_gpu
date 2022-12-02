@@ -10,7 +10,7 @@
 #include "../include/rand_gpu.h"
 
 #define ABS(A) ((A >= 0) ? (A) : -(A))
-#define SAMPLES (200000000UL)
+#define SAMPLES (600000000UL)
 static const size_t N_ALGORITHMS = RAND_GPU_ALGORITHM_XORSHIFT6432STAR - RAND_GPU_ALGORITHM_KISS09 + 1;
 
 struct perf
@@ -18,6 +18,7 @@ struct perf
     enum rand_gpu_algorithm algorithm;
     int n_buffers, multi;
     float speedup;
+    size_t misses;
 };
 
 int cmp_perf(const void *a, const void *b) {
@@ -26,7 +27,7 @@ int cmp_perf(const void *a, const void *b) {
     return ap->speedup < bp->speedup ? 1 : -1;
 }
 
-float get_time(enum rand_gpu_algorithm algorithm, int n_buffers, int multi)
+float get_time(enum rand_gpu_algorithm algorithm, int n_buffers, int multi, struct perf *best_perf)
 {
     struct timespec start, end;
 
@@ -40,6 +41,7 @@ float get_time(enum rand_gpu_algorithm algorithm, int n_buffers, int multi)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
+    best_perf[algorithm].misses = rand_gpu_rng_buffer_misses(rng);
     rand_gpu_delete_rng(rng);
 
     float time = (float) ((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000) / 1000000;
@@ -79,7 +81,7 @@ int main()
 
             for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
             {
-                float time_lib = get_time(algorithm, n_buffers, multi);
+                float time_lib = get_time(algorithm, n_buffers, multi, best_perf);
                 float speedup = time_std / time_lib;
 
                 printf(",%.5f", speedup);
@@ -103,10 +105,10 @@ int main()
 
     qsort(best_perf, N_ALGORITHMS, sizeof(struct perf), cmp_perf);
 
-    puts("\nalgorithm,n_buffers,multi,speedup");
+    puts("\nalgorithm,n_buffers,multi,speedup,buffer misses");
     for (int i = 0; i < N_ALGORITHMS; i++)
     {
-        printf("%s,%d,%d,%f\n", rand_gpu_algorithm_name(best_perf[i].algorithm, false), 
-            best_perf[i].n_buffers, best_perf[i].multi, best_perf[i].speedup);
+        printf("%s,%d,%d,%f,%lu\n", rand_gpu_algorithm_name(best_perf[i].algorithm, false), 
+            best_perf[i].n_buffers, best_perf[i].multi, best_perf[i].speedup, best_perf[i].misses);
     }
 }
