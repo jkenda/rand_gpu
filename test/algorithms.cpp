@@ -25,7 +25,7 @@ void print()
     print<I-1>();
 
     constexpr rand_gpu_algorithm algorithm = static_cast<rand_gpu_algorithm>(I);
-    rand_gpu::RNG<algorithm> rng(0, 2, 1);
+    rand_gpu::RNG<algorithm> rng(2, 1, 0);
     cout << rand_gpu::algorithm_name(algorithm, true) << ":\n";
     cout << "init time: " << rng.init_time() << '\n';
 

@@ -53,7 +53,7 @@ namespace rand_gpu
          * @param n_buffers Number of buffers for storing random numbers
          * @param multi Buffer size multiplier
          */
-        RNG(uint64_t seed, size_t n_buffers, size_t multi);
+        RNG(size_t n_buffers, size_t multi, uint64_t seed);
 
         /**
          * @brief Destroy the RNG object
@@ -64,7 +64,7 @@ namespace rand_gpu
          * @brief Returns next random number.
          * @tparam T type of random number to be returned - implemented for all primitive types.
          */
-        template <typename T = uint32_t>
+        template <typename T>
         T get_random();
 
         /**
@@ -80,7 +80,7 @@ namespace rand_gpu
         uint64_t operator()();
 
         /**
-         * @brief Advances the engine's state by a specified amount.
+         * @brief Discards z bytes from buffer.
          */
         void discard(uint64_t z);
 
@@ -88,6 +88,11 @@ namespace rand_gpu
          * @brief Returns size of random number buffer in bytes
          */
         std::size_t buffer_size() const;
+
+        /**
+         * @brief Returns size of RNG state in bytes
+         */
+        std::size_t state_size() const;
 
         /**
          * @brief Returns number of times the buffer was switched.
@@ -105,12 +110,12 @@ namespace rand_gpu
         std::chrono::nanoseconds init_time() const;
 
         /**
-         * @brief Return average GPU transfer time.
+         * @brief Returns average GPU transfer time.
          */
         std::chrono::nanoseconds avg_gpu_calculation_time() const;
 
         /**
-         * @brief Return average GPU transfer time.
+         * @brief Returns average GPU transfer time.
          */
         std::chrono::nanoseconds avg_gpu_transfer_time() const;
 

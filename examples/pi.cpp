@@ -27,7 +27,8 @@ int main(int argc, char **argv)
 
     auto start = system_clock::now();
 
-    rand_gpu::RNG rng(n_buffers, multi);
+    rand_gpu_rng _rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TINYMT64, n_buffers, multi);
+    rand_gpu::RNG rng(_rng);
 
     long cnt = 0;
 

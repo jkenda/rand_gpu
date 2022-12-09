@@ -135,7 +135,7 @@ uint64_t num_generated_gpu(const nanoseconds duration, const uint32_t percent_ge
     while (steady_clock::now() - start < duration)
     {
         for (int i = 0; i < SAMPLES; i++)
-            volatile T a = is_same<T, double>::value ? rand_gpu_get_random_double(rng) : rand_gpu_get_random_float(rng);
+            volatile T a = is_same<T, double>::value ? rand_gpu_rng_double(rng) : rand_gpu_rng_float(rng);
 
         auto start_calc = steady_clock::now();
         auto finish_calc = start_calc + time_calc[i];

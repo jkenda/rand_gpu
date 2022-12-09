@@ -54,8 +54,8 @@ float pi_lib(size_t n_buffers, size_t multi)
 
         #pragma omp for schedule(static)
         for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-            float a = rand_gpu_get_random_float(rng);
-            float b = rand_gpu_get_random_float(rng);
+            float a = rand_gpu_rng_float(rng);
+            float b = rand_gpu_rng_float(rng);
             if (sqrt(a*a + b*b) < 1.0f)
                 cnt_l++;
         }

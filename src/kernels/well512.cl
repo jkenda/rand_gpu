@@ -78,6 +78,7 @@ Seeds WELL RNG.
 */
 void well512_seed(__global well512_state* state, unsigned long j){
     state->i = 0;
+    #pragma unroll
     for (int i = 0; i < R; i+=2){
 		j=6906969069UL * j + 1234567UL; //LCG
 		state->s[i    ] = j;

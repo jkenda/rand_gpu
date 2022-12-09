@@ -79,6 +79,7 @@ void ran2_seed(__global ran2_state* state, ulong seed){
 	}
 	state->idum = seed;
 	state->idum2 = seed>>32;
+    #pragma unroll
 	for(int j = NTAB + 7; j >= 0; j--){
 		short k = state->idum / IQ1;
 		state->idum = IA1 * (state->idum - k*IQ1) - k*IR1;

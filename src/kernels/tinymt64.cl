@@ -109,6 +109,7 @@ _tinymt64_init(__global tinymt64wp_t * tiny, ulong seed)
     ulong status[2];
     status[0] = seed ^ ((ulong)tiny->mat1 << 32);
     status[1] = tiny->mat2 ^ tiny->tmat;
+    #pragma unroll
     for (int i = 1; i < TINYMT64_MIN_LOOP; i++) {
         status[i & 1] ^= i + 6364136223846793005UL
             * (status[(i - 1) & 1] ^ (status[(i - 1) & 1] >> 62));

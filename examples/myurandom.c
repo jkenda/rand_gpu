@@ -7,7 +7,7 @@ int main()
 
     while (1)
     {
-        putchar(rand_gpu_rng_get_random_8b(rng));
+        putchar(rand_gpu_rng_8b(rng));
     }
 
     rand_gpu_delete_all();

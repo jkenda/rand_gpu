@@ -25,15 +25,15 @@ int main(int argc, char **argv)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    rand_gpu_rng rng0 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_MT19937, n_buffers, multi);
-    rand_gpu_rng rng1 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_MT19937, n_buffers, multi);
+    rand_gpu_rng rng0 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TINYMT64, n_buffers, multi);
+    rand_gpu_rng rng1 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TINYMT64, n_buffers, multi);
     rand_gpu_rng_discard(rng0, rand_gpu_rng_buffer_size(rng0) / (n_buffers * 2));
     
     long cnt = 0;
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-        float a = rand_gpu_get_random_float(rng0);
-        float b = rand_gpu_get_random_float(rng1);
+        float a = rand_gpu_rng_float(rng0);
+        float b = rand_gpu_rng_float(rng1);
         if (a*a + b*b < 1.0f) {
             cnt++;
         }

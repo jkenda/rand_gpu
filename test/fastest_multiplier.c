@@ -36,7 +36,7 @@ float get_time(enum rand_gpu_algorithm algorithm, int n_buffers, int multi, stru
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
     for (uint32_t i = 0; i < SAMPLES; i++) {
-        rand_gpu_rng_get_random_32b(rng);
+        rand_gpu_rng_32b(rng);
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
@@ -72,7 +72,7 @@ int main()
         float best_speedup = 0;
         int fastest_n_buffers = 0, fastest_multi = 0;
 
-        puts("algorithm,multi,2,4,8,16");
+        puts("algorithm,multi,2 buffers,4 buffers,8 buffers,16 buffers");
 
         for (int multi = 1; multi <= 64; multi *= 2)
         {

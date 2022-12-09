@@ -32,8 +32,8 @@ int main(int argc, char **argv)
     long cnt = 0;
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-        float a = rand_gpu_get_random_float(rng0);
-        float b = rand_gpu_get_random_float(rng1);
+        float a = rand_gpu_rng_float(rng0);
+        float b = rand_gpu_rng_float(rng1);
         if (a*a + b*b < 1.0f) {
             cnt++;
         }

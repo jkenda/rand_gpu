@@ -31,7 +31,7 @@ int main(int argc, char **argv)
     long cnt = 0;
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-        cnt += rand_gpu_get_random_bool(rng);
+        cnt += rand_gpu_rng_bool(rng);
     }
 
     double avg = cnt / (double) SAMPLES;

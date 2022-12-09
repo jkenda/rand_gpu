@@ -1,7 +1,7 @@
 CC= gcc # clang
 CPPC= g++ # clang++
-CFLAGS= -O3 -ggdb -Wall -Wpedantic
-CPPFLAGS= --std=c++17 -O3 -ggdb -Wall -Wpedantic
+CFLAGS= -Ofast -ggdb -Wall -Wpedantic
+CPPFLAGS= --std=c++17 -Ofast -ggdb -Wall -Wpedantic
 SLURM_ARGS= --reservation=fri -c2 -G2
 
 # Arnes

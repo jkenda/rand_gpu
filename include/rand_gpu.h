@@ -68,7 +68,7 @@ rand_gpu_rng rand_gpu_new_rng(enum rand_gpu_algorithm algorithm, size_t n_buffer
  * @param n_buffers Number of buffers for storing random numbers
  * @param buffer_multi Buffer size multiplier
  */
-rand_gpu_rng rand_gpu_new_rng_with_seed(uint64_t seed, enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi);
+rand_gpu_rng rand_gpu_new_rng_with_seed(enum rand_gpu_algorithm algorithm, size_t n_buffers, size_t buffer_multi, uint64_t seed);
 
 /**
  * @brief Deletes the RNG.
@@ -86,49 +86,49 @@ void rand_gpu_delete_all();
  * @brief Returns next 64-bit random number.
  * @param rng RNG to retrieve the random number from
  */
-uint64_t rand_gpu_rng_get_random_64b(rand_gpu_rng rng);
+uint64_t rand_gpu_rng_64b(rand_gpu_rng rng);
 
 /**
  * @brief Returns next 32-bit random number.
  * @param rng RNG to retrieve the random number from
  */
-uint32_t rand_gpu_rng_get_random_32b(rand_gpu_rng rng);
+uint32_t rand_gpu_rng_32b(rand_gpu_rng rng);
 
 /**
  * @brief Returns next 16-bit random number.
  * @param rng RNG to retrieve the random number from
  */
-uint16_t rand_gpu_rng_get_random_16b(rand_gpu_rng rng);
+uint16_t rand_gpu_rng_16b(rand_gpu_rng rng);
 
 /**
  * @brief Returns next 8-bit random number.
  * @param rng RNG to retrieve the random number from
  */
-uint8_t rand_gpu_rng_get_random_8b(rand_gpu_rng rng);
+uint8_t rand_gpu_rng_8b(rand_gpu_rng rng);
 
 /**
  * @brief Returns next bool.
  * @param rng RNG to retrieve the random number from
  */
-uint8_t rand_gpu_get_random_bool(rand_gpu_rng rng);
+uint8_t rand_gpu_rng_bool(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random float.
  * @param rng RNG to retrieve the random number from
  */
-float rand_gpu_get_random_float(rand_gpu_rng rng);
+float rand_gpu_rng_float(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random double.
  * @param rng RNG to retrieve the random number from
  */
-double rand_gpu_get_random_double(rand_gpu_rng rng);
+double rand_gpu_rng_double(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random long double.
  * @param rng RNG to retrieve the random number from
  */
-long double rand_gpu_get_random_long_double(rand_gpu_rng rng);
+long double rand_gpu_rng_long_double(rand_gpu_rng rng);
 
 /**
  * @brief Returns next random number.
@@ -136,7 +136,7 @@ long double rand_gpu_get_random_long_double(rand_gpu_rng rng);
  * @param dst where to put the random bytes
  * @param nbytes how many bytes to copy
  */
-void rand_gpu_rng_put_random(rand_gpu_rng rng, void *dst, const size_t nbytes);
+void rand_gpu_rng_bytes(rand_gpu_rng rng, void *dst, const size_t nbytes);
 
 /**
  * @brief Discards u bytes from RNG's buffer.
