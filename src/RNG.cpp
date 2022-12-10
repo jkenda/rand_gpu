@@ -29,9 +29,9 @@
 #include <thread>
 
 #define CL_MINIMUM_OPENCL_VERSION       100
-#define CL_TARGET_OPENCL_VERSION        300
+#define CL_TARGET_OPENCL_VERSION        120
 #define CL_HPP_MINIMUM_OPENCL_VERSION   100
-#define CL_HPP_TARGET_OPENCL_VERSION    300
+#define CL_HPP_TARGET_OPENCL_VERSION    120
 #define CL_HPP_ENABLE_EXCEPTIONS
 #include "include/opencl.hpp"
 #include "../kernel.hpp"

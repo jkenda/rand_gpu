@@ -82,7 +82,7 @@ namespace rand_gpu
         /**
          * @brief Discards z bytes from buffer.
          */
-        void discard(uint64_t z);
+        void discard(size_t z);
 
         /**
          * @brief Returns size of random number buffer in bytes
