@@ -22,7 +22,7 @@ endif
 
 default: lib
 
-all: print pi pi_simple pi_urandom pi_parallel coin_flip myurandom algorithms equality frequency fastest_multiplier speedup_measurement
+all: print pi pi_simple pi_urandom coin_flip myurandom algorithms equality frequency fastest_multiplier speedup_measurement pi_parallel
 lib: lib/librand_gpu.so
 
 lib/librand_gpu.so: RNG.o
