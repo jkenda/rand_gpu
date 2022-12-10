@@ -81,7 +81,7 @@ pi_urandom: lib/librand_gpu.so examples/pi_urandom.c
 pi_parallel: lib/librand_gpu.so examples/pi_parallel.cpp
 	@mkdir	-p bin/c++
 	$(CC)	-Llib -o bin/pi_parallel examples/pi_parallel.c -lm -lrand_gpu -fopenmp
-	$(CC)	-Llib -o bin/c++/pi_parallel examples/pi_parallel.cpp -lm -lrand_gpu -fopenmp
+	$(CXX)	-Llib -o bin/c++/pi_parallel examples/pi_parallel.cpp -lm -lrand_gpu -fopenmp
 
 coin_flip: lib/librand_gpu.so examples/coin_flip.c
 	@mkdir	-p bin/c++
@@ -106,7 +106,7 @@ equality: lib/librand_gpu.so test/equality.cpp
 
 frequency: lib/librand_gpu.so test/frequency.cpp
 	@mkdir	-p bin/c++
-	$(CXX)	-Llib -o bin/c++/frequency test/frequency.cpp -lrand_gpu -fopenmp
+	$(CXX)	-Llib -o bin/c++/frequency test/frequency.cpp -lrand_gpu
 
 
 fastest_multiplier: lib/librand_gpu.so test/fastest_multiplier.c
