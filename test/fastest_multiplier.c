@@ -76,12 +76,12 @@ int main()
 
         for (int multi = 1; multi <= 64; multi *= 2)
         {
-            printf("%s,%02d", rand_gpu_algorithm_name(algorithm, false), multi);
+            printf("%s,%02d", rand_gpu_algorithm_name((enum rand_gpu_algorithm) algorithm, false), multi);
             fflush(stdout);
 
             for (int n_buffers = 2; n_buffers <= 16; n_buffers *= 2)
             {
-                float time_lib = get_time(algorithm, n_buffers, multi, best_perf);
+                float time_lib = get_time((enum rand_gpu_algorithm) algorithm, n_buffers, multi, best_perf);
                 float speedup = time_std / time_lib;
 
                 printf(",%.5f", speedup);
@@ -96,7 +96,7 @@ int main()
             }
             printf("\n");
         }
-        best_perf[algorithm].algorithm = algorithm;
+        best_perf[algorithm].algorithm = (enum rand_gpu_algorithm) algorithm;
         best_perf[algorithm].n_buffers = fastest_n_buffers;
         best_perf[algorithm].multi = fastest_multi;
         best_perf[algorithm].speedup = best_speedup;
@@ -106,7 +106,7 @@ int main()
     qsort(best_perf, N_ALGORITHMS, sizeof(struct perf), cmp_perf);
 
     puts("\nalgorithm,n_buffers,multi,speedup,buffer misses");
-    for (int i = 0; i < N_ALGORITHMS; i++)
+    for (size_t i = 0; i < N_ALGORITHMS; i++)
     {
         printf("%s,%d,%d,%f,%lu\n", rand_gpu_algorithm_name(best_perf[i].algorithm, false), 
             best_perf[i].n_buffers, best_perf[i].multi, best_perf[i].speedup, best_perf[i].misses);

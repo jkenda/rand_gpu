@@ -1,4 +1,8 @@
-#include <CL/opencl.h>
+#ifdef __APPLE__
+    #include <OpenCL/opencl.h>
+#else
+    #include <CL/opencl.h>
+#endif
 
 /**
 State of kiss09 RNG.
