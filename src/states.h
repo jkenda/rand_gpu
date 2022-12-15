@@ -18,7 +18,7 @@ typedef struct{
 	cl_ulong low, high;
 } lcg12864_state;
 
-typedef char aligned_char __attribute__((aligned(8)));
+typedef cl_char aligned_char __attribute__((aligned(8)));
 #define LFIB_LAG1 17
 /**
 State of lfib RNG.

@@ -341,11 +341,11 @@ struct RNG_impl
         case RAND_GPU_ALGORITHM_MT19937:
             // 32-bit seeds
             {
-                mt19937_64 seed_generator(seed);
-                seeds.resize(_global_size[0] / 2);
+                mt19937 seed_generator(seed);
+                seeds.resize(_global_size[0]);
                 for (auto& seed : seeds)
                     seed = seed_generator();
-                cl_seeds = cl::Buffer(_queue, seeds.begin(), seeds.end(), true, _unified_memory);
+                cl_seeds = cl::Buffer(_queue, seeds.begin(), seeds.end(), true, true);
                 k_init.setArg(1, cl_seeds);
             }
             break;
@@ -385,16 +385,9 @@ struct RNG_impl
         // generate 1st batch of numbers
         for (Buffer &buffer : _buffers)
         {
-            if (_unified_memory)
-            {
-                _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size, cl::NullRange);
-            }
-            else
-            {
-                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
-                _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host);
-                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
-            }
+            _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
+            _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host);
+            _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
         }
 
         // wait for tasks in queue to finish
@@ -446,26 +439,15 @@ struct RNG_impl
     {
         buffer.ready = false;
 
-        // reading buffers is not neccessary if the GPU is integrated
-        if (_unified_memory)
-        {
-            // calculate next batch of numbers
-            _queue.enqueueNDRangeKernel(buffer.k_generate, 0, _global_size, cl::NullRange,
-                                        NULL, &buffer.calculated_event);
-            buffer.calculated_event.setCallback(CL_COMPLETE, calculated_unified, &buffer);
-        }
-        else
-        {
-            // read calculated numbers
-            _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host,
-                                     NULL, &buffer.transferred_event);
-            buffer.transferred_event.setCallback(CL_COMPLETE, transferred, &buffer);
+        // read calculated numbers
+        _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host,
+                                 NULL, &buffer.transferred_event);
+        buffer.transferred_event.setCallback(CL_COMPLETE, transferred, &buffer);
 
-            // calculate next batch
-            _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange,
-                                        NULL, &buffer.calculated_event);
-            buffer.calculated_event.setCallback(CL_COMPLETE, calculated, &buffer);
-        }
+        // calculate next batch
+        _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size, cl::NullRange,
+                                    NULL, &buffer.calculated_event);
+        buffer.calculated_event.setCallback(CL_COMPLETE, calculated, &buffer);
 
         // save time point when kernel has been enqueued
         buffer.start_time = system_clock::now();
@@ -579,30 +561,6 @@ struct RNG_impl
         buffer->ready = true;
     }
 
-    static void calculated_unified(cl_event e, cl_int _s, void *ptr)
-    {
-        // get current time
-        auto end_time = system_clock::now();
-
-        Buffer *buffer = (Buffer *) ptr;
-
-        // get calculation time
-        uint64_t calc_start = 0, calc_end = 0;
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(uint64_t), &calc_start, NULL);
-        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(uint64_t), &calc_end,   NULL);
-
-        // notify main thread
-        buffer->ready = true;
-
-        nanoseconds calc_time(calc_end - calc_start);
-
-        // update calculation and transfer time
-        buffer->rng->_gpu_calculation_time_total += calc_time;
-        buffer->rng->_gpu_transfer_time_total    += end_time - buffer->start_time - calc_time;
-        buffer->rng->_n_gpu_transfers++;
-        buffer->rng->_n_gpu_calculations++;
-    }
-    
     nanoseconds avg_gpu_calculation_time() const
     {
         if (_n_gpu_calculations > 0)
@@ -650,17 +608,19 @@ inline __attribute__((always_inline)) long double RNG_impl::get_random<long doub
 template <>
 inline __attribute__((always_inline)) bool RNG_impl::get_random<bool>()
 {
-    // convert a bit in _bool_register to bool
-    const bool from_bit = (_bool_reg >> _bool_reg_offset++) & 1;
+    // convert a bit in _bool_reg to bool
+    const bool bool_from_bit = _bool_reg & 1;
+    _bool_reg >>= 1;
+    _bool_reg_offset++;
 
     // out of bits in register
-    if (_bool_reg_offset > sizeof(uint64_t))
+    if (_bool_reg_offset >= sizeof(_bool_reg) * 8)
     {
-        _bool_reg = get_random<uint64_t>();
+        put_random(&_bool_reg, sizeof(_bool_reg));
         _bool_reg_offset = 0;
     }
 
-    return from_bit;
+    return bool_from_bit;
 }
 
 

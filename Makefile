@@ -35,12 +35,6 @@ install: lib/librand_gpu.so
 	cp lib/*     /usr/local/lib/
 	cp include/* /usr/local/include/
 
-run: pi_parallel
-	LD_LIBRARY_PATH=lib bin/pi_parallel
-
-run_slurm: pi_parallel
-	LD_LIBRARY_PATH=lib srun $(SLURM_ARGS) bin/pi_parallel | tee output &
-
 
 bin/test_kernel: tools/test_kernel.cpp
 	@mkdir	-p bin/c++

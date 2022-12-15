@@ -10,8 +10,10 @@
  * 
  */
 
+#include <cstddef>
+#include <cstdint>
 #include <iostream>
-#include <vector>
+#include <random>
 #include "../include/RNG.hpp"
 
 using namespace std;
@@ -19,7 +21,7 @@ using std::vector;
 
 int main(int argc, char **argv)
 {
-    size_t n_buffers = 8;
+    size_t n_buffers = 3;
     size_t multi = 16;
     if (argc >= 2)
         sscanf(argv[1], "%lu", &n_buffers);
@@ -33,7 +35,8 @@ int main(int argc, char **argv)
     vector<vector<unsigned long>> buffers1(n_buffers);
     vector<vector<unsigned long>> buffers2(n_buffers);
 
-    cout << "filling buffers 1\n";
+    cout << "buffer similarity test:\n";
+
     for (size_t i = 0; i < n_buffers; i++)
     {
         for (size_t j = 0; j < bufsiz; j++)
@@ -42,7 +45,6 @@ int main(int argc, char **argv)
         }
     }
 
-    cout << "filling buffers 2\n";
     for (size_t i = 0; i < n_buffers; i++)
     {
         for (size_t j = 0; j < bufsiz; j++)
@@ -54,29 +56,60 @@ int main(int argc, char **argv)
     /* test how similar they are */
 
     // similarity within
-    cout << "testing internal similarity\n";
+    cout << "\tinternal similarity... ";
+    size_t similarity = 0;
     for (size_t i = 0; i < n_buffers; i++)
     {
         for (size_t j = i+1; j < n_buffers; j++)
         {
-            long sim = 0;
+            size_t sim = 0;
             for (size_t k = 0; k < bufsiz; k++)
             {
                 if (buffers1[i][k] == buffers1[j][k]) sim++;
                 if (buffers2[i][k] == buffers2[j][k]) sim++;
             }
-            cout << "similarity buf_" << i << " <=> buf_" << j << ": " << sim << " / " << bufsiz << '\n'; 
+            if (sim != 0) similarity++;
         }
     }
+    if (similarity == 0) cout << "OK: similarity = 0\n";
+    else cout << "ERR: similarity = " << similarity << " / " << n_buffers*n_buffers;
 
-    // outside similarity
-    long sim = 0;
+    cout << "\toutside similarity ... ";
+    similarity = 0;
     for (size_t i = 0; i < n_buffers; i++)
     {
         for (size_t j = 0; j < bufsiz; j++)
         {
-            if (buffers1[i][j] == buffers2[i][j]) sim++;
+            if (buffers1[i][j] == buffers2[i][j]) similarity++;
         }
     }
-    cout << "outside similarity: " << sim << " / " << n_buffers * bufsiz << '\n';
+    if (similarity == 0) cout << "OK: similarity = 0\n";
+    else cout << "ERR: similarity =" << similarity << " / " << n_buffers * bufsiz << '\n';
+
+    // two RNGs with the same seed should yield the same sequence of numbers
+
+    cout << "equality between 2 RNGs... "; flush(cout);
+
+    // create seed
+    random_device dev;
+    uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+    uint64_t seed = dist(dev);
+
+    // initialize RNG
+    rand_gpu::RNG<RAND_GPU_ALGORITHM_MT19937> rng0(n_buffers, multi, seed);
+    rand_gpu::RNG<RAND_GPU_ALGORITHM_MT19937> rng1(n_buffers, multi, seed);
+    rand_gpu::RNG<RAND_GPU_ALGORITHM_LFIB> rng3(n_buffers, multi, seed);
+    rand_gpu::RNG<RAND_GPU_ALGORITHM_LFIB> rng4(n_buffers, multi, seed);
+
+    size_t inequality = 0;
+    for (size_t i = 0; i < n_buffers * multi * rng0.buffer_size(); i++)
+    {
+        if (rng0.get_random<uint8_t>() != rng1.get_random<uint8_t>())
+            inequality++;
+        if (rng3.get_random<uint8_t>() != rng4.get_random<uint8_t>())
+            inequality++;
+    }
+
+    if (inequality == 0) cout << "OK: complete equality\n";
+    else cout << "ERR: inequality = " << inequality << " / " << n_buffers * bufsiz << '\n';
 }
