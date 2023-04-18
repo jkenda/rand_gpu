@@ -23,6 +23,9 @@ typedef struct __attribute__((aligned(16))){
 	aligned_int mti;
 } mt19937_state;
 
+/* MAG01[x] = x * MT19937_MATRIX_A  for x=0,1 */
+__constant uint MAG01[2]={0x0, MT19937_MATRIX_A};
+
 /**
 Generates a random 32-bit unsigned integer using MT19937 RNG.
 
@@ -31,20 +34,18 @@ Generates a random 32-bit unsigned integer using MT19937 RNG.
 #define mt19937_uint(state) _mt19937_uint(&state)
 uint _mt19937_uint(__global mt19937_state* state){
     uint y;
-    uint mag01[2]={0x0, MT19937_MATRIX_A};
-    /* mag01[x] = x * MT19937_MATRIX_A  for x=0,1 */
 	
 	if(state->mti<MT19937_N-MT19937_M){
 		y = (state->mt[state->mti]&MT19937_UPPER_MASK)|(state->mt[state->mti+1]&MT19937_LOWER_MASK);
-		state->mt[state->mti] = state->mt[state->mti+MT19937_M] ^ (y >> 1) ^ mag01[y & 0x1];
+		state->mt[state->mti] = state->mt[state->mti+MT19937_M] ^ (y >> 1) ^ MAG01[y & 0x1];
 	}
 	else if(state->mti<MT19937_N-1){
 		y = (state->mt[state->mti]&MT19937_UPPER_MASK)|(state->mt[state->mti+1]&MT19937_LOWER_MASK);
-		state->mt[state->mti] = state->mt[state->mti+(MT19937_M-MT19937_N)] ^ (y >> 1) ^ mag01[y & 0x1];
+		state->mt[state->mti] = state->mt[state->mti+(MT19937_M-MT19937_N)] ^ (y >> 1) ^ MAG01[y & 0x1];
 	}
 	else{
         y = (state->mt[MT19937_N-1]&MT19937_UPPER_MASK)|(state->mt[0]&MT19937_LOWER_MASK);
-        state->mt[MT19937_N-1] = state->mt[MT19937_M-1] ^ (y >> 1) ^ mag01[y & 0x1];
+        state->mt[MT19937_N-1] = state->mt[MT19937_M-1] ^ (y >> 1) ^ MAG01[y & 0x1];
         state->mti = 0;
 	}
     y = state->mt[state->mti++];

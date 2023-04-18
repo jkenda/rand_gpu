@@ -11,9 +11,7 @@ S. Neves, F. Araujo, Fast and small nonlinear pseudorandom number generators for
 State of tyche_i RNG.
 */
 typedef union{
-	struct{
-		uint a,b,c,d;
-	};
+    uint4 u;
 	ulong res;
 } tyche_i_state;
 
@@ -26,14 +24,14 @@ Generates a random 64-bit unsigned integer using tyche_i RNG.
 */
 #define tyche_i_ulong(state) (tyche_i_advance(&state), state.res)
 void tyche_i_advance(__global tyche_i_state* state){
-	state->b = TYCHE_I_ROT(state->b, 7) ^ state->c;
-	state->c -= state->d;
-	state->d = TYCHE_I_ROT(state->d, 8) ^ state->a;
-	state->a -= state->b;
-	state->b = TYCHE_I_ROT(state->b, 12) ^ state->c;
-	state->c -= state->d;
-	state->d = TYCHE_I_ROT(state->d, 16) ^ state->a;
-	state->a -= state->b;
+	state->u.y = TYCHE_I_ROT(state->u.y, 7) ^ state->u.z;
+	state->u.z -= state->u.w;
+	state->u.w = TYCHE_I_ROT(state->u.w, 8) ^ state->u.x;
+	state->u.x -= state->u.y;
+	state->u.y = TYCHE_I_ROT(state->u.y, 12) ^ state->u.z;
+	state->u.z -= state->u.w;
+	state->u.w = TYCHE_I_ROT(state->u.w, 16) ^ state->u.x;
+	state->u.x -= state->u.y;
 }
 
 /**
@@ -43,10 +41,10 @@ Seeds tyche_i RNG.
 @param seed Value used for seeding. Should be randomly generated for each instance of generator (thread).
 */
 void tyche_i_seed(__global tyche_i_state* state, ulong seed){
-	state->a = seed >> 32;
-	state->b = seed;
-	state->c = 2654435769;
-	state->d = 1367130551 ^ (get_global_id(0) + get_global_size(0) * (get_global_id(1) + get_global_size(1) * get_global_id(2)));
+	state->u.x = seed >> 32;
+	state->u.y = seed;
+	state->u.z = 2654435769;
+	state->u.w = 1367130551 ^ (get_global_id(0) + get_global_size(0) * (get_global_id(1) + get_global_size(1) * get_global_id(2)));
 	#pragma unroll
 	for(uint i=0;i<20;i++){
 		tyche_i_advance(state);

@@ -21,20 +21,20 @@ int main(int argc, char **argv)
         sscanf(argv[1], "%lu", &n_buffers);
     if (argc == 3)
         sscanf(argv[2], "%lu", &multi);
-    
-    cout << "num. buffers: " << n_buffers << ", multi: " << multi << '\n';
-    cout << "real pi: " << M_PI << '\n';
+
+    printf("real pi: %lf\n", M_PI);
 
     auto start = system_clock::now();
 
-    rand_gpu_rng _rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TINYMT64, n_buffers, multi);
-    rand_gpu::RNG rng(_rng);
+    rand_gpu_rng _rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
+    rand_gpu::RNG rng0(_rng);
+    rand_gpu::RNG<RAND_GPU_ALGORITHM_TINYMT64> rng1(n_buffers, multi);
 
     long cnt = 0;
 
     for (uint_fast64_t i = 0; i < SAMPLES; i++) {
-        float a = rng.get_random<float>();
-        float b = rng.get_random<float>();
+        float a = rng0.get_random<float>();
+        float b = rng1.get_random<float>();
         if (a*a + b*b < 1.0f) {
             cnt++;
         }
@@ -42,9 +42,9 @@ int main(int argc, char **argv)
     double pi_lib = (double) cnt / SAMPLES * 4;
 
     float time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
-    printf("%lu misses\n", rng.buffer_misses());
-    printf("avg calculation time: %e ms\n", duration_cast<microseconds>(rng.avg_gpu_calculation_time()).count() / (float) 1'000);
-    printf("avg transfer time:    %e ms\n", duration_cast<microseconds>(rng.avg_gpu_transfer_time()).count() / (float) 1'000);
+    printf("%lu misses\n", rng0.buffer_misses() + rng1.buffer_misses());
+    printf("avg calculation time: %e ms\n", (rng0.avg_gpu_calculation_time() + rng1.avg_gpu_calculation_time()).count() / (float) 1000);
+    printf("avg transfer time:    %e ms\n", (rng0.avg_gpu_transfer_time() + rng1.avg_gpu_transfer_time()).count() / (float) 1000);
     printf("lib pi ≃ %lf (+-%f), %f s\n", pi_lib, abs(pi_lib - M_PI), time_lib);
 
     start = system_clock::now();

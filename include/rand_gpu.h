@@ -49,7 +49,7 @@ enum rand_gpu_algorithm
 /**
  * @brief Initializes a new random number generator with default parameters.
  */
-rand_gpu_rng rand_gpu_new_rng_default();
+rand_gpu_rng rand_gpu_new_rng_default(void);
 
 /**
  * @brief Initializes a new random number generator.
@@ -79,7 +79,7 @@ void rand_gpu_delete_rng(rand_gpu_rng rng);
 /**
  * @brief Delete all RNGs.
  */
-void rand_gpu_delete_all();
+void rand_gpu_delete_all(void);
 
 
 /**
@@ -136,7 +136,7 @@ long double rand_gpu_rng_long_double(rand_gpu_rng rng);
  * @param dst where to put the random bytes
  * @param nbytes how many bytes to copy
  */
-void rand_gpu_rng_bytes(rand_gpu_rng rng, void *dst, const size_t nbytes);
+void rand_gpu_rng_put_random(rand_gpu_rng rng, void *dst, const size_t nbytes);
 
 /**
  * @brief Discards u bytes from RNG's buffer.
@@ -176,7 +176,7 @@ float rand_gpu_rng_init_time(const rand_gpu_rng rng);
 float rand_gpu_rng_avg_gpu_calculation_time(const rand_gpu_rng rng);
 
 /**
- * @brief Returns average transfer time for GPU in ms
+ * @brief Returns average transfer time for GPU in ms (including time spent waiting for calculations).
  * @param rng RNG whose GPU transfer time to retrieve
  */
 float rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng rng);
@@ -185,32 +185,32 @@ float rand_gpu_rng_avg_gpu_transfer_time(const rand_gpu_rng rng);
 /**
  * @brief Returns number of bytes occupied by all RNG instances.
  */
-size_t rand_gpu_memory_usage();
+size_t rand_gpu_memory_usage(void);
 
 /**
  * @brief Returns number of times the buffer was switched in all RNG instances.
  */
-size_t rand_gpu_buffer_switches();
+size_t rand_gpu_buffer_switches(void);
 
 /**
  * @brief Returns number of times we had to wait for GPU to fill the buffer in all RNG instances.
  */
-size_t rand_gpu_buffer_misses();
+size_t rand_gpu_buffer_misses(void);
 
 /**
  * @brief Return average init time of all RNG instances.
  */
-float rand_gpu_avg_init_time();
+float rand_gpu_avg_init_time(void);
 
 /**
  * @brief Return average GPU calculation time of all RNG instances.
  */
-float rand_gpu_avg_gpu_calculation_time();
+float rand_gpu_avg_gpu_calculation_time(void);
 
 /**
- * @brief Return average GPU transfer time of all RNG instances.
+ * @brief Return average GPU transfer time of all RNG instances (including time spent waiting for calculations).
  */
-float rand_gpu_avg_gpu_transfer_time();
+float rand_gpu_avg_gpu_transfer_time(void);
 
 /**
  * @brief Returns the compilation time for the algorithm in ms.

@@ -115,7 +115,7 @@ namespace rand_gpu
         std::chrono::nanoseconds avg_gpu_calculation_time() const;
 
         /**
-         * @brief Returns average GPU transfer time.
+         * @brief Returns average transfer time for GPU in (including time spent waiting for calculations).
          */
         std::chrono::nanoseconds avg_gpu_transfer_time() const;
 
@@ -155,7 +155,7 @@ namespace rand_gpu
     std::chrono::nanoseconds avg_gpu_calculation_time();
 
     /**
-     * @brief Return average GPU transfer time of all RNGs.
+     * @brief Return average GPU transfer time of all RNGs (including time spent waiting for calculations).
      */
     std::chrono::nanoseconds avg_gpu_transfer_time();
 

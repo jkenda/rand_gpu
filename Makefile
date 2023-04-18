@@ -28,7 +28,6 @@ lib: lib/librand_gpu.so
 lib/librand_gpu.so: RNG.o
 	@mkdir -p lib
 	$(CLCXX) -shared -o lib/librand_gpu.so RNG.o $(LOPENCL) -flto
-	-bin/test_kernel
 
 install: lib/librand_gpu.so
 #	@mkdir -p ~/.local/lib/
@@ -36,11 +35,12 @@ install: lib/librand_gpu.so
 	cp include/* /usr/local/include/
 
 
-bin/test_kernel: tools/test_kernel.cpp
+bin/test_kernel: tools/test_kernel.cpp kernel.hpp
 	@mkdir	-p bin/c++
 	$(CLCXX)	-o bin/test_kernel tools/test_kernel.cpp $(LOPENCL)
+	-bin/test_kernel
 
-RNG.o: include/RNG.hpp src/RNG.cpp kernel.hpp bin/test_kernel
+RNG.o: bin/test_kernel include/RNG.hpp src/RNG.cpp
 	$(CXX) -c src/RNG.cpp -fPIC
 
 kernel.hpp: tools/convert_kernel.py src/kernels/*.cl
@@ -48,29 +48,32 @@ kernel.hpp: tools/convert_kernel.py src/kernels/*.cl
 
 print: lib/librand_gpu.so examples/print.c
 	@mkdir	-p bin/c++
+	@mkdir	-p bin/static/c++
 	$(CC)	-Llib -o bin/print examples/print.c -lrand_gpu
+	$(CC)	-o bin/static/print examples/print.c lib/librand_gpu.so -flto
 	$(CXX)	-Llib -o bin/c++/print examples/print.cpp -lrand_gpu
+	$(CXX)	-o bin/static/c++/print examples/print.cpp lib/librand_gpu.so
 
 pi: lib/librand_gpu.so examples/pi.c
 	@mkdir	-p bin/c++
 	@mkdir	-p bin/static/c++
 	$(CC)	-Llib -o bin/pi examples/pi.c -lrand_gpu
-	$(CC)	-o bin/static/pi examples/pi.c lib/librand_gpu.so
+	$(CC)	-o bin/static/pi examples/pi.c lib/librand_gpu.so -flto
 	$(CXX)	-Llib -o bin/c++/pi examples/pi.cpp -lrand_gpu
-	$(CXX)	-o bin/static/c++/pi examples/pi.cpp lib/librand_gpu.so
+	$(CXX)	-o bin/static/c++/pi examples/pi.cpp lib/librand_gpu.so -flto
 
 pi_simple: lib/librand_gpu.so examples/pi_simple.c
 	@mkdir	-p bin/c++
 	@mkdir	-p bin/static/c++
 	$(CC)	-Llib -o bin/pi_simple examples/pi_simple.c -lrand_gpu
-	$(CC)	-o bin/static/pi_simple examples/pi_simple.c lib/librand_gpu.so
+	$(CC)	-o bin/static/pi_simple examples/pi_simple.c lib/librand_gpu.so -flto
 	$(CXX)	-Llib -o bin/c++/pi_simple examples/pi_simple.cpp -lrand_gpu
-	$(CXX)	-o bin/static/c++/pi_simple examples/pi_simple.cpp lib/librand_gpu.so
+	$(CXX)	-o bin/static/c++/pi_simple examples/pi_simple.cpp lib/librand_gpu.so -flto
 
 pi_urandom: lib/librand_gpu.so examples/pi_urandom.c
 	@mkdir	-p bin/static
 	$(CC)	-Llib -o bin/pi_urandom examples/pi_urandom.c -lrand_gpu
-	$(CC)	-o bin/static/pi_urandom examples/pi_urandom.c lib/librand_gpu.so
+	$(CC)	-o bin/static/pi_urandom examples/pi_urandom.c lib/librand_gpu.so -flto
 
 pi_parallel: lib/librand_gpu.so examples/pi_parallel.cpp
 	@mkdir	-p bin/c++
@@ -81,18 +84,20 @@ coin_flip: lib/librand_gpu.so examples/coin_flip.c
 	@mkdir	-p bin/c++
 	@mkdir	-p bin/static/c++
 	$(CC)	-Llib -o bin/coin_flip examples/coin_flip.c -lm -lrand_gpu
-	$(CC)	-o bin/static/coin_flip examples/coin_flip.c lib/librand_gpu.so
+	$(CC)	-o bin/static/coin_flip examples/coin_flip.c lib/librand_gpu.so -flto
 
 myurandom: lib/librand_gpu.so examples/myurandom.c
 	@mkdir	-p bin/c++
 	@mkdir	-p bin/static/c++
 	$(CC)	-Llib -o bin/myurandom examples/myurandom.c -lm -lrand_gpu
-	$(CC)	-o bin/static/myurandom examples/myurandom.c lib/librand_gpu.so -lm
+	$(CC)	-o bin/static/myurandom examples/myurandom.c lib/librand_gpu.so -lm -flto
 	
 
 algorithms: lib/librand_gpu.so test/algorithms.cpp
 	@mkdir	-p bin/c++
+	@mkdir	-p bin/static/c++
 	$(CXX)	-Llib -o bin/c++/algorithms test/algorithms.cpp -lrand_gpu
+	$(CXX)	-o bin/static/c++/algorithms test/algorithms.cpp lib/librand_gpu.so -flto
 
 equality: lib/librand_gpu.so test/equality.cpp
 	@mkdir	-p bin/c++
@@ -107,13 +112,13 @@ fastest_multiplier: lib/librand_gpu.so test/fastest_multiplier.c
 	@mkdir	-p bin
 	@mkdir	-p bin/static
 	$(CC)	-Llib -Wno-unused-value -o bin/fastest_multiplier test/fastest_multiplier.c -lrand_gpu
-	$(CC)	-Wno-unused-value -o bin/static/fastest_multiplier test/fastest_multiplier.c lib/librand_gpu.so
+	$(CC)	-Wno-unused-value -o bin/static/fastest_multiplier test/fastest_multiplier.c lib/librand_gpu.so -flto
 
 speedup_measurement: lib/librand_gpu.so test/speedup_measurement.cpp
 	@mkdir	-p bin/c++
 	@mkdir	-p bin/static/c++
 	$(CXX)	-Llib -o bin/c++/speedup_measurement test/speedup_measurement.cpp -lrand_gpu
-	$(CXX)	-o bin/static/c++/speedup_measurement test/speedup_measurement.cpp lib/librand_gpu.so
+	$(CXX)	-o bin/static/c++/speedup_measurement test/speedup_measurement.cpp lib/librand_gpu.so -flto
 
 speedup_measurement_parallel: lib/librand_gpu.so test/speedup_measurement_parallel.cpp
 	@mkdir  -p bin/c++
