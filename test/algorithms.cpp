@@ -51,7 +51,7 @@ void time_pi(float time_std)
     printf("%16s: ", rand_gpu::algorithm_name(algorithm)); flush(cout);
 
     auto start = system_clock::now();
-    rand_gpu::RNG<algorithm> rng(0, 2, 16);
+    rand_gpu::RNG<algorithm> rng(2, 1, 13);
 
     long cnt = 0;
 
@@ -67,7 +67,7 @@ void time_pi(float time_std)
     float time_lib = duration_cast<microseconds>(system_clock::now() - start).count() / (float) 1'000'000;
     printf("pi ≃ %.5f (+-%.9f), ", pi, abs(pi - M_PI));
     printf("speedup = %.3f, ", time_std / time_lib);
-    printf("%4lu misses, ", rng.buffer_misses());
+    printf("%6lu misses, ", rng.buffer_misses());
     printf("init time: %7.3f ms, ", rng.init_time().count() / (float) 1'000'000);
     printf("avg. access time: %6.3f ms\n", rng.avg_gpu_transfer_time().count() / (float) 1'000'000);
 }

@@ -19,10 +19,46 @@
 using namespace std;
 using std::vector;
 
+template <int A>
+void equal_with_same_seed(size_t n_buffers, size_t multi)
+{
+    equal_with_same_seed<A-1>(n_buffers, multi);
+    constexpr rand_gpu_algorithm algorithm = (rand_gpu_algorithm) A;
+
+    // two RNGs with the same seed should yield the same sequence of numbers
+    cout << "equality between 2 RNGs: " << rand_gpu_algorithm_name(algorithm, false) << "... "; flush(cout);
+
+    // create seed
+    random_device dev;
+    uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+    uint64_t seed = dist(dev);
+
+    // initialize RNG
+    rand_gpu::RNG<algorithm> rng0(n_buffers, multi, seed);
+    rand_gpu::RNG<algorithm> rng1(n_buffers, multi, seed);
+    size_t bufsiz = rng0.buffer_size();
+
+
+    size_t inequality = 0;
+    for (size_t i = 0; i < n_buffers * multi * bufsiz * 23; i++)
+    {
+        if (rng0.template get_random<uint8_t>() != rng1.template get_random<uint8_t>())
+            inequality++;
+    }
+
+    if (inequality == 0) cout << "OK: complete equality\n";
+    else cout << "ERR: inequality = " << inequality << " / " << n_buffers * bufsiz << '\n';
+}
+
+template <>
+void equal_with_same_seed<-1>(size_t n_buffers, size_t multi)
+{
+}
+
 int main(int argc, char **argv)
 {
-    size_t n_buffers = 3;
-    size_t multi = 16;
+    size_t n_buffers = 2;
+    size_t multi = 1;
     if (argc >= 2)
         sscanf(argv[1], "%lu", &n_buffers);
     if (argc == 3)
@@ -86,30 +122,5 @@ int main(int argc, char **argv)
     if (similarity == 0) cout << "OK: similarity = 0\n";
     else cout << "ERR: similarity =" << similarity << " / " << n_buffers * bufsiz << '\n';
 
-    // two RNGs with the same seed should yield the same sequence of numbers
-
-    cout << "equality between 2 RNGs... "; flush(cout);
-
-    // create seed
-    random_device dev;
-    uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-    uint64_t seed = dist(dev);
-
-    // initialize RNG
-    rand_gpu::RNG<RAND_GPU_ALGORITHM_MT19937> rng0(n_buffers, multi, seed);
-    rand_gpu::RNG<RAND_GPU_ALGORITHM_MT19937> rng1(n_buffers, multi, seed);
-    rand_gpu::RNG<RAND_GPU_ALGORITHM_LFIB> rng3(n_buffers, multi, seed);
-    rand_gpu::RNG<RAND_GPU_ALGORITHM_LFIB> rng4(n_buffers, multi, seed);
-
-    size_t inequality = 0;
-    for (size_t i = 0; i < n_buffers * multi * rng0.buffer_size(); i++)
-    {
-        if (rng0.get_random<uint8_t>() != rng1.get_random<uint8_t>())
-            inequality++;
-        if (rng3.get_random<uint8_t>() != rng4.get_random<uint8_t>())
-            inequality++;
-    }
-
-    if (inequality == 0) cout << "OK: complete equality\n";
-    else cout << "ERR: inequality = " << inequality << " / " << n_buffers * bufsiz << '\n';
+    equal_with_same_seed<RAND_GPU_ALGORITHM_XORSHIFT6432STAR>(n_buffers, multi);
 }
