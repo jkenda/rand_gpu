@@ -44,7 +44,7 @@ using namespace std;
 using chrono::nanoseconds;
 using chrono::system_clock;
 
-atomic<nanoseconds> &operator+=(atomic<nanoseconds> &a, nanoseconds b)
+atomic<nanoseconds>& operator+=(atomic<nanoseconds>& a, nanoseconds b)
 {
     a.store(a.load() + b);
     return a;
@@ -238,7 +238,7 @@ struct RNG_impl
             {
                 cl::Platform::get(&platform);
             }
-            catch (const cl::Error &err)
+            catch (const cl::Error& err)
             {
                 cerr << "No openCL platforms found!\n";
                 cerr << "Forgot 'srun'?\n";
@@ -249,7 +249,7 @@ struct RNG_impl
             {
                 platform.getDevices(CL_DEVICE_TYPE_GPU, &__devices);
             }
-            catch (const cl::Error &err)
+            catch (const cl::Error& err)
             {
                 cerr << "No openCL devices found!\n";
                 throw err;
@@ -272,11 +272,11 @@ struct RNG_impl
         __device_id = (__device_id + 1) % __devices.size();
 
         // create context and program
-        cl::Device &device   = __devices[device_id];
+        cl::Device& device   = __devices[device_id];
         bool program_built   = __programs[algorithm].count(&device) > 0;
-        cl::Program &program = __programs[algorithm][&device];
+        cl::Program& program = __programs[algorithm][&device];
         auto [it, _] = __context.try_emplace(&device, device);
-        cl::Context &context = it->second;
+        cl::Context& context = it->second;
 
         if (!program_built)
         {
@@ -288,7 +288,7 @@ struct RNG_impl
                 program.build(device);
                 __compilation_times[algorithm] = system_clock::now() - build_start;
             }
-            catch (const cl::Error &err)
+            catch (const cl::Error& err)
             {
                 // print buildlog if build failed
                 if (program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(device) != CL_SUCCESS)
@@ -328,7 +328,7 @@ struct RNG_impl
         {
             _state_buf = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, _state_buf_size);
         }
-        catch (const cl::Error &err) {
+        catch (const cl::Error& err) {
             cerr << "Cannot create buffer. Try smaller multi or n_buffers." << '\n';
             throw err;
         }
@@ -364,7 +364,7 @@ struct RNG_impl
 
 
         // allocate and map device and host buffers
-        for (Buffer &buffer : _buffers)
+        for (Buffer& buffer : _buffers)
         {
             try
             {
@@ -372,7 +372,7 @@ struct RNG_impl
                 buffer.device = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, _buffer_size);
                 buffer.host = (uint8_t *) _queue.enqueueMapBuffer(buffer.device, true, CL_MAP_READ, 0, _buffer_size);
             }
-            catch (const cl::Error &err) {
+            catch (const cl::Error& err) {
                 cerr << "Cannot create buffer. Try smaller multi or n_buffers.\n";
                 throw err;
             }
@@ -381,7 +381,7 @@ struct RNG_impl
         }
 
         // create kernels for buffers
-        for (Buffer &buffer : _buffers)
+        for (Buffer& buffer : _buffers)
         {
             buffer.k_generate = cl::Kernel(program, GENERATE_KERNEL_NAMES.at(algorithm));
             buffer.k_generate.setArg(0, _state_buf);
@@ -389,11 +389,14 @@ struct RNG_impl
         }
 
         // generate 1st batch of numbers
-        for (Buffer &buffer : _buffers)
+        for (Buffer& buffer : _buffers)
         {
             _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
-            _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host);
-            _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
+            
+            if (!_unified_memory) {
+                _queue.enqueueReadBuffer(buffer.device, false, 0, _buffer_size, buffer.host);
+                _queue.enqueueNDRangeKernel(buffer.k_generate, cl::NullRange, _global_size);
+            }
         }
 
         // wait for all buffers to be initialized
@@ -414,7 +417,7 @@ struct RNG_impl
 
     ~RNG_impl()
     {
-        for (Buffer &buffer : _buffers)
+        for (Buffer& buffer : _buffers)
         {
             // wait for the OpenCL thread to finish work
             while (!buffer.ready || buffer.rng->_n_gpu_calculations < buffer.rng->_n_gpu_transfers)
@@ -442,7 +445,7 @@ struct RNG_impl
         __rngs.erase(this);
     }
 
-    inline __attribute__((always_inline)) void switch_and_fill_buffer(Buffer &buffer)
+    inline __attribute__((always_inline)) void switch_and_fill_buffer(Buffer& buffer)
     {
         buffer.ready = false;
 
@@ -474,7 +477,7 @@ struct RNG_impl
     template <typename T>
     inline __attribute__((always_inline)) T get_random()
     {
-        Buffer &active_buf = _buffers[_active_buf_id];
+        Buffer& active_buf = _buffers[_active_buf_id];
 
         // just switched buffers - wait for next buffer to be ready
         if (_buf_offset == 0 && !active_buf.ready)
@@ -495,7 +498,7 @@ struct RNG_impl
         return num;
     }
 
-    inline __attribute__((always_inline)) void put_random(void *dst, const size_t &nbytes)
+    inline __attribute__((always_inline)) void put_random(void *dst, const size_t nbytes)
     {
         Buffer *active_buf = &_buffers[_active_buf_id];
 
@@ -552,7 +555,7 @@ struct RNG_impl
         uint64_t calc_start = 0, calc_end = 0;
         clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &calc_start, NULL);
         clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,   sizeof(cl_ulong), &calc_end,   NULL);
-        nanoseconds calc_time(calc_end - calc_start);
+        const nanoseconds calc_time(calc_end - calc_start);
 	       
         buffer->rng->_gpu_calculation_time_total += calc_time;
         buffer->rng->_n_gpu_calculations++;
@@ -566,7 +569,7 @@ struct RNG_impl
         uint64_t transfer_start = 0, transfer_end = 0;
         clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_QUEUED, sizeof(cl_ulong), &transfer_start, NULL);
         clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_END,    sizeof(cl_ulong), &transfer_end,   NULL);
-        nanoseconds transfer_time(transfer_end - transfer_start);
+        const nanoseconds transfer_time(transfer_end - transfer_start);
 
         // update transfer time
         buffer->rng->_gpu_transfer_time_total += transfer_time;
@@ -778,7 +781,7 @@ namespace rand_gpu
     }
 
     template <rand_gpu_algorithm A>
-    RNG<A> &RNG<A>::operator=(RNG&&) = default;
+    RNG<A>& RNG<A>::operator=(RNG&&) = default;
 
     template <rand_gpu_algorithm A>
     template <typename T>
@@ -788,7 +791,7 @@ namespace rand_gpu
     }
 
     template <rand_gpu_algorithm A>
-    void RNG<A>::put_random(void *dst, const size_t &nbytes)
+    void RNG<A>::put_random(void *dst, const size_t nbytes)
     {
         return _impl_ptr->put_random(dst, nbytes);
     }

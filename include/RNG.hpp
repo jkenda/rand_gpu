@@ -72,7 +72,7 @@ namespace rand_gpu
          * @param dst where to put the random bytes
          * @param nbytes how many bytes to copy
          */
-        void put_random(void *dst, const size_t &nbytes);
+        void put_random(void *dst, const size_t nbytes);
 
         /**
          * @brief Returns next random number.

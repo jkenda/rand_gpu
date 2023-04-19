@@ -29,6 +29,7 @@ int main(int argc, char **argv)
     rand_gpu_rng _rng = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
     rand_gpu::RNG rng0(_rng);
     rand_gpu::RNG<RAND_GPU_ALGORITHM_TINYMT64> rng1(n_buffers, multi);
+    rng0.discard(rng0.buffer_size() / 2);
 
     long cnt = 0;
 
