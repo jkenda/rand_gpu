@@ -14,6 +14,8 @@
 #include <cstdint>
 #include <cstddef>
 #include <chrono>
+#include <string>
+#include <vector>
 #include "rand_gpu.h"
 
 // forward declaration of the hidden struct
@@ -133,6 +135,8 @@ namespace rand_gpu
      * @brief Returns memory used by all RNG instances.
      */
     std::size_t memory_usage();
+
+    std::vector<const std::string&> devices();
 
     /**
      * @brief Returns number of times the buffer was switched in all RNG instances.

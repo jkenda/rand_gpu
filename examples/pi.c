@@ -25,7 +25,7 @@ int main(int argc, char **argv)
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    rand_gpu_rng rng0 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TINYMT64, n_buffers, multi);
+    rand_gpu_rng rng0 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TYCHE, n_buffers, multi);
     rand_gpu_rng rng1 = rand_gpu_new_rng(RAND_GPU_ALGORITHM_TINYMT64, n_buffers, multi);
     rand_gpu_rng_discard(rng0, rand_gpu_rng_buffer_size(rng0) / 2);
     

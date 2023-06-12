@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 #include <vector>
 #include <array>
 #include <unordered_set>
@@ -28,9 +29,9 @@
 #include <chrono>
 #include <thread>
 
-#define CL_MINIMUM_OPENCL_VERSION       100
+#define CL_MINIMUM_OPENCL_VERSION       110
 #define CL_TARGET_OPENCL_VERSION        120
-#define CL_HPP_MINIMUM_OPENCL_VERSION   100
+#define CL_HPP_MINIMUM_OPENCL_VERSION   110
 #define CL_HPP_TARGET_OPENCL_VERSION    120
 #define CL_HPP_ENABLE_EXCEPTIONS
 #include "include/opencl.hpp"
@@ -231,12 +232,12 @@ struct RNG_impl
 
         if (!__initialized)
         {
-            cl::Platform platform;
+            vector<cl::Platform> platforms;
 
             // get platforms and devices
             try
             {
-                cl::Platform::get(&platform);
+                cl::Platform::get(&platforms);
             }
             catch (const cl::Error& err)
             {
@@ -247,7 +248,11 @@ struct RNG_impl
 
             try
             {
-                platform.getDevices(CL_DEVICE_TYPE_GPU, &__devices);
+                for (auto& platform : platforms) {
+                    vector<cl::Device> devices;
+                    platform.getDevices(CL_DEVICE_TYPE_GPU, &devices);
+                    __devices.insert(__devices.end(), devices.begin(), devices.end());
+                }
             }
             catch (const cl::Error& err)
             {
